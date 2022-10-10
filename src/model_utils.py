@@ -3,7 +3,7 @@ from src.models import my_swin, encoder_decoder, my_swin_unet, my_swin_unetv2, m
 
 from src.backbones import utae, unet3d, convlstm, convgru, fpn, late_utae
 from src.panoptic import paps
-# from src.models import myformer
+from src.models import myformer
 from SwinUnetMulti.network import swin_multi
 
 # from timm.models import load_checkpoint
