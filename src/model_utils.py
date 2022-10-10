@@ -1,4 +1,4 @@
-from src.models import my_swin, encoder_decoder, my_swin_unet, my_swin_unetv2, my_vsa_swin_unetv2
+from src.models import my_swin, encoder_decoder, my_swin_unetv2, my_vsa_swin_unetv2
 # from src.models import my_swin, encoder_decoder, my_swin_unet, my_swin_unetv2
 
 from src.backbones import utae, unet3d, convlstm, convgru, fpn, late_utae
@@ -42,8 +42,6 @@ def get_model(config, mode="semantic"):
             model = my_swin.SwinNet(config=config.config, checkpoint=config.checkpoint)
         elif config.model == "swin_unetv2":
             model = my_swin_unetv2.MySwinUnetV2()
-        elif config.model == "swin_unet":
-            model = my_swin_unet.MySwinUnet()
         elif config.model == "swin_upernet":
             model = encoder_decoder.SwinUperNet(
               num_classes=config.num_classes,
