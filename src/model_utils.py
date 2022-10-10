@@ -3,7 +3,7 @@ from src.models import my_swin, encoder_decoder, my_swin_unet, my_swin_unetv2, m
 
 from src.backbones import utae, unet3d, convlstm, convgru, fpn, late_utae
 from src.panoptic import paps
-from src.models import myformer
+# from src.models import myformer
 from SwinUnetMulti.network import swin_multi
 
 # from timm.models import load_checkpoint
@@ -35,8 +35,8 @@ def get_model(config, mode="semantic"):
                     pad_value=config.pad_value,
                     padding_mode=config.padding_mode,
             )
-        elif config.model == "transformer":
-            model = myformer.Net()
+        # elif config.model == "transformer":
+        #     model = myformer.Net()
             # load_checkpoint(model=model, checkpoint_path='poolformer_s12.pth.tar')
         elif config.model == "swin_transformer":
             model = my_swin.SwinNet(config=config.config, checkpoint=config.checkpoint)
