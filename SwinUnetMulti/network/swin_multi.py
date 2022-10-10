@@ -69,9 +69,9 @@ class Swin_multi(nn.Module):
                                 use_checkpoint=True,
                                 decoder=False
                                 )
-    self.load_from('/content/drive/MyDrive/transformer-experiment/SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s2_swin_unet)
-    self.load_from('/content/drive/MyDrive/transformer-experiment/SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1a_swin_unet)
-    self.load_from('/content/drive/MyDrive/transformer-experiment/SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1d_swin_unet)
+    self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s2_swin_unet)
+    self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1a_swin_unet)
+    self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1d_swin_unet)
     self.dims = [96, 192, 384, 768]
     self.reduce_dims = Feature_reduce(self.dims[-1] * 3, self.dims[-1])
     
