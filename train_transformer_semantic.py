@@ -79,7 +79,7 @@ parser.add_argument(
 parser.add_argument(
     "--num_workers", default=8, type=int, help="Number of data loading workers"
 )
-parser.add_argument("--rdm_seed", default=3407, type=int, help="Random seed")
+parser.add_argument("--rdm_seed", default=1, type=int, help="Random seed")
 parser.add_argument(
     "--device",
     default="cuda",
