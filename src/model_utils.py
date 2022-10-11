@@ -1,9 +1,9 @@
-from src.models import my_swin, encoder_decoder, my_swin_unetv2, my_vsa_swin_unetv2
+from src.models import my_swin_unetv2, my_vsa_swin_unetv2
 # from src.models import my_swin, encoder_decoder, my_swin_unet, my_swin_unetv2
 
 from src.backbones import utae, unet3d, convlstm, convgru, fpn, late_utae
 from src.panoptic import paps
-from src.models import myformer
+# from src.models import myformer
 from SwinUnetMulti.network import swin_multi
 
 # from timm.models import load_checkpoint
@@ -38,18 +38,18 @@ def get_model(config, mode="semantic"):
         # elif config.model == "transformer":
         #     model = myformer.Net()
             # load_checkpoint(model=model, checkpoint_path='poolformer_s12.pth.tar')
-        elif config.model == "swin_transformer":
-            model = my_swin.SwinNet(config=config.config, checkpoint=config.checkpoint)
+        # elif config.model == "swin_transformer":
+        #     model = my_swin.SwinNet(config=config.config, checkpoint=config.checkpoint)
         elif config.model == "swin_unetv2":
             model = my_swin_unetv2.MySwinUnetV2()
-        elif config.model == "swin_upernet":
-            model = encoder_decoder.SwinUperNet(
-              num_classes=config.num_classes,
-              in_channels=10,
-              pretrained=True, 
-              use_aux=True, 
-              fpn_out=256, 
-              freeze_bn=False)
+        # elif config.model == "swin_upernet":
+        #     model = encoder_decoder.SwinUperNet(
+        #       num_classes=config.num_classes,
+        #       in_channels=10,
+        #       pretrained=True,
+        #       use_aux=True,
+        #       fpn_out=256,
+        #       freeze_bn=False)
         elif config.model == "vsa_swin_unetv2":
             model = my_vsa_swin_unetv2.MyVSASwinUnetV2()
         elif config.model == "swin_multi":
