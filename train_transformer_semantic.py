@@ -118,7 +118,7 @@ parser.add_argument("--pad_value", default=0, type=float)
 parser.add_argument("--padding_mode", default="reflect", type=str)
 parser.add_argument(
     "--val_every",
-    default=5,
+    default=1,
     type=int,
     help="Interval in epochs between two validation steps.",
 )
