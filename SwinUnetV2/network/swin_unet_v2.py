@@ -7,7 +7,7 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from src.backbones.ltae import LTAE2d
 from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
-from src.models.poolformer import Feature_aliasing, Feature_reduce
+from src.backbones.componets import Feature_aliasing, Feature_reduce
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):

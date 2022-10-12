@@ -8,7 +8,7 @@ from src.backbones.ltae import LTAE2d
 from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
 from src.backbones.window import VSAWindowAttention
-from src.models.poolformer import Feature_aliasing, Feature_reduce
+from src.backbones.componets import Feature_aliasing, Feature_reduce
 # from NATransformer.natten import NeighborhoodAttention
 
 class Mlp(nn.Module):
