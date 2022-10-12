@@ -822,13 +822,13 @@ class SwinTransformerSys(nn.Module):
               self.output = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=1, bias=False)
 
 
-    @torch.jit.ignore
-    def no_weight_decay(self):
-        return {'absolute_pos_embed'}
-
-    @torch.jit.ignore
-    def no_weight_decay_keywords(self):
-        return {'relative_position_bias_table'}
+    # @torch.jit.ignore
+    # def no_weight_decay(self):
+    #     return {'absolute_pos_embed'}
+    #
+    # @torch.jit.ignore
+    # def no_weight_decay_keywords(self):
+    #     return {'relative_position_bias_table'}
 
     # Encoder and Bottleneck
     def forward_features(self, x, batch_positions=None):
