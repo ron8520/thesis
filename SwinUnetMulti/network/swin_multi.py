@@ -6,7 +6,7 @@ from einops import rearrange, reduce
 from einops.layers.torch import Rearrange
 from .swin_unet_v2 import SwinTransformerSys
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
-from src.models.poolformer import Feature_aliasing, Feature_reduce
+from src.backbones.componets import Feature_aliasing, Feature_reduce
 
 
 class Swin_multi(nn.Module):
