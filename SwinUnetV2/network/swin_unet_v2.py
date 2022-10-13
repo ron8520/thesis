@@ -9,6 +9,43 @@ from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
 from src.backbones.componets import Feature_aliasing, Feature_reduce
 
+
+class MorphFC_T(nn.Module):
+    def __init__(self, dim, input_resolution, segment_dim=8, qkv_bias=False, qk_scale=None,
+                 attn_drop=0., proj_drop=0.):
+        super().__init__()
+        self.input_resolution = input_resolution
+        self.segment_dim = 8
+        dim2 = dim
+        self.mlp_t = nn.Linear(dim2, dim2, bias=qkv_bias)
+
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward(self, x, T=None):
+        H, W = self.input_resolution
+        B, L, C = x.shape
+        assert L == H * W, "input feature has wrong size"
+
+        x = rearrange(x, '(b t) (h w) c -> b t h w c', b=B, t=T, h=H, w=W, c=C)
+
+        S = C // self.segment_dim
+
+        # T
+        t = x.reshape(B, T, H, W, self.segment_dim, S).permute(0, 4, 2, 3, 1, 5).reshape(B, self.segment_dim, H, W,
+                                                                                         T * S)
+        t = self.mlp_t(t).reshape(B, self.segment_dim, H, W, T, S).permute(0, 4, 2, 3, 1, 5).reshape(B, T, H, W, C)
+
+        x = t
+
+        x = self.proj(x)
+        x = self.proj_drop(x)
+
+        x = rearrange(x, "b t h w c -> (b t) (h w) c")
+
+        return x
+
+
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
@@ -98,11 +135,6 @@ class WindowAttention(nn.Module):
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
-        # Swin v1
-        # define a parameter table of relative position bias
-        # self.relative_position_bias_table = nn.Parameter(
-        #     torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
-
         # get pair-wise relative position index for each token inside the window
         coords_h = torch.arange(self.window_size[0])
         coords_w = torch.arange(self.window_size[1])
@@ -111,15 +143,7 @@ class WindowAttention(nn.Module):
         relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
         relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
 
-        # Swin v1
-        # relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
-        # relative_coords[:, :, 1] += self.window_size[1] - 1
-        # relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
-        # relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
-        # self.register_buffer("relative_position_index", relative_position_index)
-
         # Swin v2, log-spaced coordinates, Eq.(4)
-        # log_relative_position_index = torch.mul(torch.sign(relative_coords), torch.log(torch.abs(relative_coords) + 1))
         log_relative_position_index = torch.sign(relative_coords) * torch.log(1. + relative_coords.abs())
         self.register_buffer("log_relative_position_index", log_relative_position_index)
 
@@ -134,8 +158,6 @@ class WindowAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-        # Swin v1
-        # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
         # Swin v2, Scaled cosine attention
@@ -157,28 +179,12 @@ class WindowAttention(nn.Module):
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
-        # Swin v1
-        # q = q * self.scale
-        # attn = (q @ k.transpose(-2, -1))
-
-        # Swin v2, Scaled cosine attention
-        # q = q * self.scale
-        # qk = q @ k.transpose(-2, -1)
-        # q2 = torch.mul(q, q).sum(-1).sqrt().unsqueeze(3)
-        # k2 = torch.mul(k, k).sum(-1).sqrt().unsqueeze(3)
-        # attn = qk / torch.clip(q2 @ k2.transpose(-2, -1), min=1e-6)
-        # attn = attn / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
-
         # Swin v2, Scaled cosine attention
         q = q * self.scale
         attn = torch.einsum("bhqd, bhkd -> bhqk", q, k) / torch.maximum(
             torch.norm(q, dim=-1, keepdim=True) * torch.norm(k, dim=-1, keepdim=True).transpose(-2, -1),
             torch.tensor(1e-06, device=q.device, dtype=q.dtype))
         attn = attn / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
-
-        # Swin v1
-        # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
-        #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
 
         # Swin v2
         relative_position_bias = self.get_continuous_relative_position_bias(N)
@@ -239,6 +245,7 @@ class SwinTransformerBlock(nn.Module):
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm, cnn=False):
         super().__init__()
+        self.t_mlp = MorphFC_T(dim=dim, proj_drop=drop, input_resolution=input_resolution)
         self.dim = dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
@@ -286,39 +293,16 @@ class SwinTransformerBlock(nn.Module):
 
         self.register_buffer("attn_mask", attn_mask)
         # Use CNN for local feature, Borrow from ViTAE
-        self.cnn = cnn
-        # self.conv = nn.Sequential(
-        #                     Rearrange('b (h w) c -> b c h w', h=input_resolution[0], w=input_resolution[1]),
-        #                     nn.Conv2d(dim, mlp_hidden_dim, kernel_size=3, padding=1),
-        #                     nn.BatchNorm2d(mlp_hidden_dim),
-        #                     nn.ReLU(inplace=True),
-        #                     nn.Conv2d(mlp_hidden_dim, dim, kernel_size=3, padding=1),
-        #                     nn.BatchNorm2d(dim),
-        #                     nn.ReLU(inplace=True),
-        #                     nn.Conv2d(dim, dim, kernel_size=3, padding=1),
-        #                     Rearrange('b c h w-> b (h w) c'),
-        #                   ) if self.cnn else nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x, T=None):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
-        
-        # CNN before the attention
-        # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
-        # x = self.conv(x)
-        # x = rearrange(x, 'b c h w -> b (h w) c', h=H, w=W)
-        
-        shortcut = x
 
-        # Another branch for CNN
-        # if self.shift_size == 0:
-        #     shortcut = rearrange(shortcut, 'b (h w) c -> b c h w', h=H, w=W)
-        #     shortcut = self.conv(shortcut)
-        #     shortcut = rearrange(shortcut, 'b c h w -> b (h w) c', h=H, w=W)
-        
-        # Swin v1
-        # x = self.norm1(x)
+        # Handle temporal information
+        x = x + self.norm1(self.t_mlp(x, T=T))
+
+        shortcut = x
 
         x = x.view(B, H, W, C)
 
@@ -352,18 +336,9 @@ class SwinTransformerBlock(nn.Module):
         # FFN
         x = shortcut + self.drop_path(x)
 
-        # Swin v1
-        # x = x + self.drop_path(self.mlp(self.norm2(x)))
-
         # Swin v2
         x = x + self.drop_path(self.norm2(self.mlp(x)))
-        
-        # CNN after the attention
-        # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
-        # x = self.conv(x)
-        # x = rearrange(x, 'b c h w -> b (h w) c', h=H, w=W)
-        # before return feature map 
-        # self.conv(x)
+
         return x
 
     def extra_repr(self) -> str:
@@ -525,7 +500,7 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer,
-                                 cnn = True if i == (depth - 1) else False
+                                 cnn=True if i == (depth - 1) else False
                                  )
             for i in range(depth)])
 
@@ -535,10 +510,10 @@ class BasicLayer(nn.Module):
         else:
             self.downsample = None
 
-    def forward(self, x):
+    def forward(self, x, T=None):
         for index, blk in enumerate(self.blocks):
             if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x)
+                x = checkpoint.checkpoint(blk, x, T)
             else:
                 x = blk(x)
         if self.downsample is not None:
@@ -752,7 +727,7 @@ class SwinTransformerSys(nn.Module):
         for i_layer in range(self.num_layers):
             concat_linear = nn.Linear(2 * int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
                                       int(embed_dim * 2 ** (
-                                                  self.num_layers - 1 - i_layer))) if i_layer > 0 else nn.Identity()
+                                              self.num_layers - 1 - i_layer))) if i_layer > 0 else nn.Identity()
             if i_layer == 0:
                 layer_up = PatchExpand(
                     input_resolution=(patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
@@ -761,8 +736,8 @@ class SwinTransformerSys(nn.Module):
             else:
                 layer_up = BasicLayer_up(dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
                                          input_resolution=(
-                                         patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
-                                         patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
+                                             patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                                             patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
                                          depth=depths[(self.num_layers - 1 - i_layer)],
                                          num_heads=num_heads[(self.num_layers - 1 - i_layer)],
                                          window_size=window_size,
@@ -780,14 +755,12 @@ class SwinTransformerSys(nn.Module):
         self.norm = norm_layer(self.num_features)
         self.norm_up = norm_layer(self.embed_dim)
 
-        ## temporal attention
+        # temporal attention
         self.temporal_encoder = LTAE2d(
             in_channels=768,
             d_model=256,
-            # d_model=1536,
             n_head=16,
             mlp=[256, 768],
-            # mlp=[1536, 768],
             return_att=True,
             d_k=8,
         )
@@ -801,12 +774,12 @@ class SwinTransformerSys(nn.Module):
             norm="group",
             padding_mode="reflect",
         )
-        
-        ## SE block
+
+        # SE block
         self.se = nn.Sequential(
-          Rearrange('b (h w) c -> b c h w', h=self.features_sizes[0], w=self.features_sizes[0]),
-          SELayer(embed_dim),
-          Rearrange('b c h w -> b (h w) c')
+            Rearrange('b (h w) c -> b c h w', h=self.features_sizes[0], w=self.features_sizes[0]),
+            SELayer(embed_dim),
+            Rearrange('b c h w -> b (h w) c')
         )
 
         if self.final_upsample == "expand_first":
@@ -814,13 +787,12 @@ class SwinTransformerSys(nn.Module):
             self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
                                           dim_scale=4, dim=embed_dim)
             self.out_conv = nn.Sequential(
-              Feature_aliasing(embed_dim),
-              Feature_aliasing(embed_dim)
-              # Feature_reduce(embed_dim, embed_dim // 2),
-              # Feature_aliasing(embed_dim // 2)
+                Feature_aliasing(embed_dim),
+                Feature_aliasing(embed_dim)
+                # Feature_reduce(embed_dim, embed_dim // 2),
+                # Feature_aliasing(embed_dim // 2)
             )
             self.output = nn.Conv2d(in_channels=embed_dim, out_channels=self.num_classes, kernel_size=1, bias=False)
-
 
         self.apply(self._init_weights)
 
@@ -855,7 +827,7 @@ class SwinTransformerSys(nn.Module):
     #     return {'relative_position_bias_table'}
 
     # Encoder and Bottleneck
-    def forward_features(self, x):
+    def forward_features(self, x, T=None):
         x = self.patch_embed(x)
         if self.ape:
             x = x + self.absolute_pos_embed
@@ -864,7 +836,7 @@ class SwinTransformerSys(nn.Module):
 
         for layer in self.layers:
             x_downsample.append(x)
-            x = layer(x)
+            x = layer(x, T=T)
 
         x = self.norm(x)  # B L C
 
@@ -893,42 +865,42 @@ class SwinTransformerSys(nn.Module):
             x = self.up(x)
             x = x.view(B, 4 * H, 4 * W, -1)
             x = x.permute(0, 3, 1, 2)  # B,C,H,W
-            x = self.out_conv(x) # for output not like block
+            x = self.out_conv(x)  # for output not like block
             x = self.output(x)
 
         return x
 
     def forward(self, x, batch_positions=None):
         pad_mask = (
-          (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
+            (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
         )  # BxT pad mask
-        
+
         B, T, C, H, W = x.shape
         x = self.in_conv.smart_forward(x)
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
-        #spatial encoder
-        x, x_downsample = self.forward_features(x)
-        
-        x = rearrange(x, '(b t) (h w) c -> b t c h w', 
-          b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
-        
+        # spatial encoder
+        x, x_downsample = self.forward_features(x, T=T)
+
+        x = rearrange(x, '(b t) (h w) c -> b t c h w',
+                      b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
+
         x, att = self.temporal_encoder(
-          x,
-          batch_positions=batch_positions, 
-          pad_mask=pad_mask
+            x,
+            batch_positions=batch_positions,
+            pad_mask=pad_mask
         )
 
         x = rearrange(x, 'b c h w -> b (h w) c')
 
         # Reshape back to 5 dims 
         for i, elements in enumerate(x_downsample):
-          x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
-            b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])   
-          x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
-          x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')      
+            x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
+                                        b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
+            x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
+            x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')
 
-        #decoder
+            # decoder
         x = self.forward_up_features(x, x_downsample)
         x = self.se(x)
         x = self.up_x4(x)
@@ -945,9 +917,7 @@ class SwinTransformerSys(nn.Module):
         return flops
 
 
-
-
-if __name__=='__main__':
+if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print('#### Test Model ###')
     x = torch.rand(4, 3, 224, 224).to(device)
