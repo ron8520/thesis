@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
@@ -9,6 +11,54 @@ from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
 from src.backbones.componets import Feature_aliasing, Feature_reduce
 
+class DWConv(nn.Module):
+    def __init__(self, dim=768):
+        super(DWConv, self).__init__()
+        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
+
+    def forward(self, x):
+        x = self.dwconv(x)
+        x = x.flatten(2).transpose(1, 2)
+        return x
+
+class DWMlp(nn.Module):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0., linear=False):
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.dwconv = DWConv(hidden_features)
+        self.act = act_layer()
+        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.drop = nn.Dropout(drop)
+        self.linear = linear
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x, H, W):
+        x = self.fc1(x)
+        B, N, C = x.shape
+        x = x.transpose(1, 2).view(B, C, H, W)
+        x = self.dwconv(x)
+        x = self.act(x)
+        x = self.drop(x)
+        x = self.fc2(x)
+        x = self.drop(x)
+        return x
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
@@ -237,8 +287,9 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, cnn=False):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, no_attn=False):
         super().__init__()
+        self.no_attn = no_attn
         self.dim = dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
@@ -252,16 +303,20 @@ class SwinTransformerBlock(nn.Module):
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
 
         self.norm1 = norm_layer(dim)
-        self.attn = WindowAttention(
-            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+        if not self.no_attn:
+            self.attn = WindowAttention(
+                dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+                qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        if not self.no_attn:
+            self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        else:
+            self.mlp = DWMlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-        if self.shift_size > 0:
+        if self.shift_size > 0 and not self.no_attn:
             # calculate attention mask for SW-MSA
             H, W = self.input_resolution
             img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
@@ -286,7 +341,6 @@ class SwinTransformerBlock(nn.Module):
 
         self.register_buffer("attn_mask", attn_mask)
         # Use CNN for local feature, Borrow from ViTAE
-        self.cnn = cnn
         # self.conv = nn.Sequential(
         #                     Rearrange('b (h w) c -> b c h w', h=input_resolution[0], w=input_resolution[1]),
         #                     nn.Conv2d(dim, mlp_hidden_dim, kernel_size=3, padding=1),
@@ -303,67 +357,45 @@ class SwinTransformerBlock(nn.Module):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
-        
-        # CNN before the attention
-        # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
-        # x = self.conv(x)
-        # x = rearrange(x, 'b c h w -> b (h w) c', h=H, w=W)
-        
-        shortcut = x
 
-        # Another branch for CNN
-        # if self.shift_size == 0:
-        #     shortcut = rearrange(shortcut, 'b (h w) c -> b c h w', h=H, w=W)
-        #     shortcut = self.conv(shortcut)
-        #     shortcut = rearrange(shortcut, 'b c h w -> b (h w) c', h=H, w=W)
-        
-        # Swin v1
-        # x = self.norm1(x)
+        if not self.no_attn:
+            shortcut = x
 
-        x = x.view(B, H, W, C)
+            x = x.view(B, H, W, C)
 
-        # cyclic shift
-        if self.shift_size > 0:
-            shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
-        else:
-            shifted_x = x
+            # cyclic shift
+            if self.shift_size > 0:
+                shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            else:
+                shifted_x = x
 
-        # partition windows
-        x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
-        x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
+            # partition windows
+            x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
+            x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
 
-        # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
+            # W-MSA/SW-MSA
+            attn_windows = self.attn(x_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
 
-        # merge windows
-        attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
-        shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
+            # merge windows
+            attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
+            shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
 
-        # reverse cyclic shift
-        if self.shift_size > 0:
-            x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
-        else:
-            x = shifted_x
-        x = x.view(B, H * W, C)
+            # reverse cyclic shift
+            if self.shift_size > 0:
+                x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
+            else:
+                x = shifted_x
+            x = x.view(B, H * W, C)
 
-        # Swin v2
-        x = self.norm1(x)
+            # Swin v2
+            x = self.norm1(x)
 
-        # FFN
-        x = shortcut + self.drop_path(x)
-
-        # Swin v1
-        # x = x + self.drop_path(self.mlp(self.norm2(x)))
+            # FFN
+            x = shortcut + self.drop_path(x)
 
         # Swin v2
         x = x + self.drop_path(self.norm2(self.mlp(x)))
-        
-        # CNN after the attention
-        # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
-        # x = self.conv(x)
-        # x = rearrange(x, 'b c h w -> b (h w) c', h=H, w=W)
-        # before return feature map 
-        # self.conv(x)
+
         return x
 
     def extra_repr(self) -> str:
@@ -507,7 +539,8 @@ class BasicLayer(nn.Module):
 
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
+                 no_attn=False):
 
         super().__init__()
         self.dim = dim
@@ -525,7 +558,7 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer,
-                                 cnn = True if i == (depth - 1) else False
+                                 no_attn=no_attn
                                  )
             for i in range(depth)])
 
@@ -743,7 +776,8 @@ class SwinTransformerSys(nn.Module):
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
                                downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
-                               use_checkpoint=use_checkpoint)
+                               use_checkpoint=use_checkpoint,
+                               no_attn=True if i_layer in (0, 1) else False)
             self.layers.append(layer)
 
         # build decoder layers
