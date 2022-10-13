@@ -2,14 +2,18 @@ import torch.nn as nn
 import torch
 from SwinUnetV2.network.swin_unet_v2 import Mlp, window_partition, window_reverse, Mlp_Relu
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+import torch.utils.checkpoint as checkpoint
+
 
 class GroupNorm(nn.GroupNorm):
     """
     Group Normalization with 1 group.
     Input: tensor in shape [B, C, H, W]
     """
+
     def __init__(self, num_channels, **kwargs):
         super().__init__(1, num_channels, **kwargs)
+
 
 class Feature_aliasing(nn.Module):
 
@@ -25,6 +29,7 @@ class Feature_aliasing(nn.Module):
         x = self.norm(x)
         return self.act(x)
 
+
 class Feature_reduce(nn.Module):
 
     def __init__(self, in_channels, out_channels):
@@ -37,6 +42,7 @@ class Feature_reduce(nn.Module):
         x = self.conv(x)
         x = self.norm(x)
         return self.act(x)
+
 
 class Prediction_head(nn.Module):
 
@@ -74,8 +80,9 @@ class SwinTransformerShareBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, cnn=False):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, return_attn=False):
         super().__init__()
+        self.return_attn = return_attn
         self.dim = dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
@@ -91,7 +98,9 @@ class SwinTransformerShareBlock(nn.Module):
         self.norm1 = norm_layer(dim)
         self.attn = ShareWindowAttention(
             dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
+            return_attn=self.return_attn
+        )
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -123,7 +132,7 @@ class SwinTransformerShareBlock(nn.Module):
 
         self.register_buffer("attn_mask", attn_mask)
 
-    def forward(self, x, attn_map=None):
+    def forward(self, x, prev_attn_map=None):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
@@ -143,7 +152,12 @@ class SwinTransformerShareBlock(nn.Module):
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, mask=self.attn_mask, attn_map=attn_map)  # nW*B, window_size*window_size, C
+        if self.return_attn:
+            attn_windows, attn_map = self.attn(x_windows,
+                                               mask=self.attn_mask,
+                                               attn_map=prev_attn_map)  # nW*B, window_size*window_size, C
+        else:
+            attn_windows = self.attn(x_windows, mask=self.attn_mask, attn_map=prev_attn_map)
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
@@ -164,7 +178,10 @@ class SwinTransformerShareBlock(nn.Module):
         # Swin v2
         x = x + self.drop_path(self.norm2(self.mlp(x)))
 
-        return x
+        if self.return_attn:
+            return x, attn_map
+        else:
+            return x
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
@@ -183,6 +200,7 @@ class SwinTransformerShareBlock(nn.Module):
         # norm2
         flops += self.dim * H * W
         return flops
+
 
 class ShareWindowAttention(nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.
@@ -208,23 +226,24 @@ class ShareWindowAttention(nn.Module):
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
-        # get pair-wise relative position index for each token inside the window
-        coords_h = torch.arange(self.window_size[0])
-        coords_w = torch.arange(self.window_size[1])
-        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
-        coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
-        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
-        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+        if self.return_map:
+            # get pair-wise relative position index for each token inside the window
+            coords_h = torch.arange(self.window_size[0])
+            coords_w = torch.arange(self.window_size[1])
+            coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+            coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+            relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+            relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
 
-        # Swin v2, log-spaced coordinates, Eq.(4)
-        log_relative_position_index = torch.sign(relative_coords) * torch.log(1. + relative_coords.abs())
-        self.register_buffer("log_relative_position_index", log_relative_position_index)
+            # Swin v2, log-spaced coordinates, Eq.(4)
+            log_relative_position_index = torch.sign(relative_coords) * torch.log(1. + relative_coords.abs())
+            self.register_buffer("log_relative_position_index", log_relative_position_index)
 
-        # Swin v2, small meta network, Eq.(3)
-        self.cpb = Mlp_Relu(in_features=2,  # delta x, delta y
-                            hidden_features=256,  # hidden dims
-                            out_features=self.num_heads,
-                            dropout=0.0)
+            # Swin v2, small meta network, Eq.(3)
+            self.cpb = Mlp_Relu(in_features=2,  # delta x, delta y
+                                hidden_features=256,  # hidden dims
+                                out_features=self.num_heads,
+                                dropout=0.0)
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -301,4 +320,80 @@ class ShareWindowAttention(nn.Module):
         flops += self.num_heads * N * N * (self.dim // self.num_heads)
         # x = self.proj(x)
         flops += N * self.dim * self.dim
+        return flops
+
+
+class ShareBasicLayer(nn.Module):
+    """ A basic Swin Transformer layer for one stage.
+    Args:
+        dim (int): Number of input channels.
+        input_resolution (tuple[int]): Input resolution.
+        depth (int): Number of blocks.
+        num_heads (int): Number of attention heads.
+        window_size (int): Local window size.
+        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
+        qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
+        drop (float, optional): Dropout rate. Default: 0.0
+        attn_drop (float, optional): Attention dropout rate. Default: 0.0
+        drop_path (float | tuple[float], optional): Stochastic depth rate. Default: 0.0
+        norm_layer (nn.Module, optional): Normalization layer. Default: nn.LayerNorm
+        downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
+        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
+    """
+
+    def __init__(self, dim, input_resolution, depth, num_heads, window_size,
+                 mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
+
+        super().__init__()
+        self.dim = dim
+        self.input_resolution = input_resolution
+        self.depth = depth
+        self.use_checkpoint = use_checkpoint
+
+        # build blocks
+        self.blocks = nn.ModuleList([
+            SwinTransformerShareBlock(dim=dim, input_resolution=input_resolution,
+                                      num_heads=num_heads, window_size=window_size,
+                                      shift_size=0 if (i % 2 == 0) else window_size // 2,
+                                      mlp_ratio=mlp_ratio,
+                                      qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                      drop=drop, attn_drop=attn_drop,
+                                      drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                      norm_layer=norm_layer,
+                                      return_attn=True if i in (0, 1) else False
+                                      )
+            for i in range(depth)])
+
+        # patch merging layer
+        if downsample is not None:
+            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
+        else:
+            self.downsample = None
+
+    def forward(self, x):
+        attn_maps = []
+        for index, blk in enumerate(self.blocks):
+            if self.use_checkpoint:
+                if index in (0, 1):
+                    x, attn_map = checkpoint.checkpoint(blk, x)
+                    attn_maps.append(attn_map)
+                else:
+                    x = checkpoint.checkpoint(blk, x, attn_maps[index%2])
+            else:
+                x = blk(x)
+        if self.downsample is not None:
+            x = self.downsample(x)
+        return x
+
+    def extra_repr(self) -> str:
+        return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"
+
+    def flops(self):
+        flops = 0
+        for blk in self.blocks:
+            flops += blk.flops()
+        if self.downsample is not None:
+            flops += self.downsample.flops()
         return flops

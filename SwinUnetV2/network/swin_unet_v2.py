@@ -7,7 +7,8 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from src.backbones.ltae import LTAE2d
 from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
-from src.backbones.componets import Feature_aliasing, Feature_reduce
+from src.backbones.componets import Feature_aliasing, Feature_reduce, ShareBasicLayer
+
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -743,7 +744,23 @@ class SwinTransformerSys(nn.Module):
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
                                downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
-                               use_checkpoint=use_checkpoint)
+                               use_checkpoint=use_checkpoint
+                               ) if i_layer != 2 \
+                else ShareBasicLayer(
+                    dim=int(embed_dim * 2 ** i_layer),
+                    input_resolution=(patches_resolution[0] // (2 ** i_layer),
+                                      patches_resolution[1] // (2 ** i_layer)),
+                    depth=depths[i_layer],
+                    num_heads=num_heads[i_layer],
+                    window_size=window_size,
+                    mlp_ratio=self.mlp_ratio,
+                    qkv_bias=qkv_bias, qk_scale=qk_scale,
+                    drop=drop_rate, attn_drop=attn_drop_rate,
+                    drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                    norm_layer=norm_layer,
+                    downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                    use_checkpoint=use_checkpoint
+                )
             self.layers.append(layer)
 
         # build decoder layers
