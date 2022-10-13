@@ -525,7 +525,7 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer,
-                                 cnn = True if i == (depth - 1) else False
+                                 cnn=True if i == (depth - 1) else False
                                  )
             for i in range(depth)])
 
