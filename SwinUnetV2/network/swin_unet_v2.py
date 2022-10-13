@@ -7,7 +7,7 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from src.backbones.ltae import LTAE2d
 from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
-from src.backbones.componets import Feature_aliasing, Feature_reduce, ShareBasicLayer
+from src.backbones.componets import Feature_aliasing, Feature_reduce, ShareBasicLayer, ShareBasicLayer_up
 
 
 class Mlp(nn.Module):
@@ -790,7 +790,24 @@ class SwinTransformerSys(nn.Module):
                                              depths[:(self.num_layers - 1 - i_layer) + 1])],
                                          norm_layer=norm_layer,
                                          upsample=PatchExpand if (i_layer < self.num_layers - 1) else None,
-                                         use_checkpoint=use_checkpoint)
+                                         use_checkpoint=use_checkpoint) \
+                    if i_layer != 1 else ShareBasicLayer_up(
+                        dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
+                        input_resolution=(
+                            patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                            patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
+                        depth=depths[(self.num_layers - 1 - i_layer)],
+                        num_heads=num_heads[(self.num_layers - 1 - i_layer)],
+                        window_size=window_size,
+                        mlp_ratio=self.mlp_ratio,
+                        qkv_bias=qkv_bias, qk_scale=qk_scale,
+                        drop=drop_rate, attn_drop=attn_drop_rate,
+                        drop_path=dpr[sum(depths[:(self.num_layers - 1 - i_layer)]):sum(
+                            depths[:(self.num_layers - 1 - i_layer) + 1])],
+                        norm_layer=norm_layer,
+                        upsample=PatchExpand if (i_layer < self.num_layers - 1) else None,
+                        use_checkpoint=use_checkpoint
+                    )
             self.layers_up.append(layer_up)
             self.concat_back_dim.append(concat_linear)
 
