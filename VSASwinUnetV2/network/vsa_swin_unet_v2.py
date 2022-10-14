@@ -841,7 +841,7 @@ class SwinTransformerSys(nn.Module):
             n_head=16,
             mlp=[256, 768],
             return_att=True,
-            d_k=4,
+            d_k=8,
         )
         self.temporal_aggregator = Temporal_Aggregator(mode="att_group")
         self.pad_value = 0

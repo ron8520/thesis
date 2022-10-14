@@ -355,7 +355,9 @@ class SwinTransformerBlock(nn.Module):
             x = shortcut + self.drop_path(x)
 
         # Swin v2
-        x = x + self.drop_path(self.norm2(self.mlp(x)))
+            x = x + self.drop_path(self.norm2(self.mlp(x)))
+        else:
+            x = x + self.drop_path(self.norm2(self.mlp(x, H=H, W=H)))
 
         return x
 
