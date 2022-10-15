@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch
-from SwinUnetV2.network.swin_unet_v2 import Mlp, window_partition, window_reverse, Mlp_Relu, PatchExpand
+from SwinUnetV2.network.swin_unet_v2 import window_partition, window_reverse, Mlp_Relu, PatchExpand, Mlp
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import torch.utils.checkpoint as checkpoint
 
