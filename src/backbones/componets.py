@@ -2,6 +2,8 @@ import torch.nn as nn
 import torch
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import torch.utils.checkpoint as checkpoint
+from einops.layers.torch import Rearrange
+from einops import rearrange, reduce
 
 class PatchExpand(nn.Module):
     def __init__(self, input_resolution, dim, dim_scale=2, norm_layer=nn.LayerNorm):
