@@ -305,17 +305,17 @@ class ShareWindowAttention(nn.Module):
     """
 
     def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
-                 return_map=False):
+                 return_attn=False):
 
         super().__init__()
-        self.return_map = return_map
+        self.return_attn = return_attn
         self.dim = dim
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
-        if self.return_map:
+        if self.return_attn:
             # get pair-wise relative position index for each token inside the window
             coords_h = torch.arange(self.window_size[0])
             coords_w = torch.arange(self.window_size[1])
@@ -390,7 +390,7 @@ class ShareWindowAttention(nn.Module):
         x = self.proj(x)
         x = self.proj_drop(x)
 
-        if self.return_map:
+        if self.return_attn:
             return x, attn
         else:
             return x
