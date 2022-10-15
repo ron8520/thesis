@@ -526,7 +526,9 @@ class ShareBasicLayer_up(nn.Module):
                                       qkv_bias=qkv_bias, qk_scale=qk_scale,
                                       drop=drop, attn_drop=attn_drop,
                                       drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                      norm_layer=norm_layer)
+                                      norm_layer=norm_layer,
+                                      return_attn=True if i in (0, 1) else False
+                                      )
             for i in range(depth)])
 
         # patch merging layer
