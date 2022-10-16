@@ -72,7 +72,6 @@ class Swin_multi(nn.Module):
         self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1a_swin_unet)
         self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1d_swin_unet)
         self.dims = [96, 192, 384, 768]
-        self.input_resolutions = [(32, 32), (16, 16), (8, 8), (4, 4)]
         self.reduce_dims = Feature_reduce(self.dims[-1] * 3, self.dims[-1])
 
         self.concat_dims = nn.ModuleList()
@@ -80,7 +79,6 @@ class Swin_multi(nn.Module):
             self.concat_dims.append(
                 MultiSwinTransformerBlock(
                     dim=self.dims[i],
-                    input_resolution=self.input_resolutions[i],
                     num_heads=16,
                     window_size=4,
                     shift_size=0,
