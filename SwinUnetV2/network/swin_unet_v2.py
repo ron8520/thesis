@@ -26,7 +26,7 @@ class MorphFC_T(nn.Module):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
-
+        B = B // T
         x = rearrange(x, '(b t) (h w) c -> b t h w c', b=B, t=T, h=H, w=W, c=C)
 
         S = C // self.segment_dim
@@ -243,9 +243,11 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, cnn=False):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, temporal=False):
         super().__init__()
-        self.t_mlp = MorphFC_T(dim=dim, proj_drop=drop, input_resolution=input_resolution)
+        self.temporal = temporal
+        if self.temporal:
+            self.t_mlp = MorphFC_T(dim=dim, proj_drop=drop, input_resolution=input_resolution)
         self.dim = dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
@@ -300,7 +302,8 @@ class SwinTransformerBlock(nn.Module):
         assert L == H * W, "input feature has wrong size"
 
         # Handle temporal information
-        x = x + self.norm1(self.t_mlp(x, T=T))
+        if self.temporal:
+            x = x + self.norm1(self.t_mlp(x, T=T))
 
         shortcut = x
 
@@ -500,7 +503,7 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer,
-                                 cnn=True if i == (depth - 1) else False
+                                 temporal=True
                                  )
             for i in range(depth)])
 
