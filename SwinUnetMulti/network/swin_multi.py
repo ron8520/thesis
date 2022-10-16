@@ -193,15 +193,13 @@ class MultiSwinTransformerBlock(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
+    def __init__(self, dim, num_heads, window_size=7,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
         self.dim = dim
-        self.input_resolution = input_resolution
         self.num_heads = num_heads
         self.window_size = window_size
-        self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
         if min(self.input_resolution) <= self.window_size:
             # if window size is larger than input resolution, we don't partition windows
@@ -247,23 +245,13 @@ class MultiSwinTransformerBlock(nn.Module):
         # self.cnn = cnn
 
     def forward(self, x, s1a, s1d):
-        H, W = self.input_resolution
-        B, L, C = x.shape
-        Ba, La, Ca = s1a.shape
-        Bd, Ld, Cd = s1d.shape
-        assert L == H * W, "input feature has wrong size"
+        B, C, H, W = x.shape
+        Ba, Ca, Ha, Wa = s1a.shape
+        Bd, Cd, Hd, Wd = s1d.shape
 
         shortcut = x
 
-        x = x.view(B, H, W, C)
-        s1a = s1a.view(B, H, W, Ca)
-        s1d = s1d.view(B, H, W, Cd)
-
-        # cyclic shift
-        if self.shift_size > 0:
-            shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
-        else:
-            shifted_x = x
+        shifted_x = x
 
         # partition windows
         x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
