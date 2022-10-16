@@ -98,11 +98,6 @@ class WindowAttention(nn.Module):
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
-        # Swin v1
-        # define a parameter table of relative position bias
-        # self.relative_position_bias_table = nn.Parameter(
-        #     torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
-
         # get pair-wise relative position index for each token inside the window
         coords_h = torch.arange(self.window_size[0])
         coords_w = torch.arange(self.window_size[1])
@@ -111,15 +106,6 @@ class WindowAttention(nn.Module):
         relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
         relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
 
-        # Swin v1
-        # relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
-        # relative_coords[:, :, 1] += self.window_size[1] - 1
-        # relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
-        # relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
-        # self.register_buffer("relative_position_index", relative_position_index)
-
-        # Swin v2, log-spaced coordinates, Eq.(4)
-        # log_relative_position_index = torch.mul(torch.sign(relative_coords), torch.log(torch.abs(relative_coords) + 1))
         log_relative_position_index = torch.sign(relative_coords) * torch.log(1. + relative_coords.abs())
         self.register_buffer("log_relative_position_index", log_relative_position_index)
 
@@ -157,17 +143,6 @@ class WindowAttention(nn.Module):
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
-        # Swin v1
-        # q = q * self.scale
-        # attn = (q @ k.transpose(-2, -1))
-
-        # Swin v2, Scaled cosine attention
-        # q = q * self.scale
-        # qk = q @ k.transpose(-2, -1)
-        # q2 = torch.mul(q, q).sum(-1).sqrt().unsqueeze(3)
-        # k2 = torch.mul(k, k).sum(-1).sqrt().unsqueeze(3)
-        # attn = qk / torch.clip(q2 @ k2.transpose(-2, -1), min=1e-6)
-        # attn = attn / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
 
         # Swin v2, Scaled cosine attention
         q = q * self.scale
@@ -175,10 +150,6 @@ class WindowAttention(nn.Module):
             torch.norm(q, dim=-1, keepdim=True) * torch.norm(k, dim=-1, keepdim=True).transpose(-2, -1),
             torch.tensor(1e-06, device=q.device, dtype=q.dtype))
         attn = attn / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
-
-        # Swin v1
-        # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
-        #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
 
         # Swin v2
         relative_position_bias = self.get_continuous_relative_position_bias(N)
@@ -287,38 +258,14 @@ class SwinTransformerBlock(nn.Module):
         self.register_buffer("attn_mask", attn_mask)
         # Use CNN for local feature, Borrow from ViTAE
         self.cnn = cnn
-        # self.conv = nn.Sequential(
-        #                     Rearrange('b (h w) c -> b c h w', h=input_resolution[0], w=input_resolution[1]),
-        #                     nn.Conv2d(dim, mlp_hidden_dim, kernel_size=3, padding=1),
-        #                     nn.BatchNorm2d(mlp_hidden_dim),
-        #                     nn.ReLU(inplace=True),
-        #                     nn.Conv2d(mlp_hidden_dim, dim, kernel_size=3, padding=1),
-        #                     nn.BatchNorm2d(dim),
-        #                     nn.ReLU(inplace=True),
-        #                     nn.Conv2d(dim, dim, kernel_size=3, padding=1),
-        #                     Rearrange('b c h w-> b (h w) c'),
-        #                   ) if self.cnn else nn.Identity()
+
 
     def forward(self, x):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
         
-        # CNN before the attention
-        # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
-        # x = self.conv(x)
-        # x = rearrange(x, 'b c h w -> b (h w) c', h=H, w=W)
-        
         shortcut = x
-
-        # Another branch for CNN
-        # if self.shift_size == 0:
-        #     shortcut = rearrange(shortcut, 'b (h w) c -> b c h w', h=H, w=W)
-        #     shortcut = self.conv(shortcut)
-        #     shortcut = rearrange(shortcut, 'b c h w -> b (h w) c', h=H, w=W)
-        
-        # Swin v1
-        # x = self.norm1(x)
 
         x = x.view(B, H, W, C)
 
@@ -352,18 +299,9 @@ class SwinTransformerBlock(nn.Module):
         # FFN
         x = shortcut + self.drop_path(x)
 
-        # Swin v1
-        # x = x + self.drop_path(self.mlp(self.norm2(x)))
-
         # Swin v2
         x = x + self.drop_path(self.norm2(self.mlp(x)))
-        
-        # CNN after the attention
-        # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
-        # x = self.conv(x)
-        # x = rearrange(x, 'b c h w -> b (h w) c', h=H, w=W)
-        # before return feature map 
-        # self.conv(x)
+
         return x
 
     def extra_repr(self) -> str:
