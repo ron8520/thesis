@@ -81,13 +81,12 @@ class Swin_multi(nn.Module):
                     dim=self.dims[i],
                     num_heads=16,
                     window_size=4,
-                    shift_size=0,
                     mlp_ratio=4.,
                     qkv_bias=True,
                     qk_scale=None,
                     drop=0.,
                     attn_drop=0.,
-                    drop_path=0.,
+                    drop_path=0.1,
                     act_layer=nn.GELU,
                     norm_layer=nn.LayerNorm
                 )
