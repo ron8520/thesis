@@ -32,8 +32,9 @@ class MorphFC_T(nn.Module):
         S = C // self.segment_dim
 
         # T
-        t = x.reshape(B, T, H, W, self.segment_dim, S).permute(0, 4, 2, 3, 1, 5).reshape(B, self.segment_dim, H, W,
-                                                                                         T * S)
+        t = x.reshape(B, T, H, W, self.segment_dim, S).permute(0, 4, 2, 3, 1, 5).reshape(B, self.segment_dim, H, W, T * S)
+        print(t.shape)
+
         t = self.mlp_t(t).reshape(B, self.segment_dim, H, W, T, S).permute(0, 4, 2, 3, 1, 5).reshape(B, T, H, W, C)
 
         x = t
