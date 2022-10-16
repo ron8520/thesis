@@ -15,7 +15,7 @@ class MorphFC_T(nn.Module):
                  attn_drop=0., proj_drop=0.):
         super().__init__()
         self.input_resolution = input_resolution
-        self.segment_dim = 8
+        self.segment_dim = segment_dim
         self.dim = dim
         self.mlp_t = nn.Linear(self.dim, self.dim, bias=qkv_bias)
 
