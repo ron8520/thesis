@@ -30,7 +30,7 @@ class MorphFC_T(nn.Module):
         x = rearrange(x, '(b t) (h w) c -> b t h w c', b=B, t=T, h=H, w=W, c=C)
 
         S = C // self.segment_dim
-        print(S)
+
         # T
         t = x.reshape(B, T, H, W, self.segment_dim, S).permute(0, 4, 2, 3, 1, 5).reshape(B, self.segment_dim, H, W, T * S)
         print(t.shape)
@@ -246,11 +246,12 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, temporal=False):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, temporal=False, segment_dim=None):
         super().__init__()
         self.temporal = temporal
         if self.temporal:
-            self.t_mlp = MorphFC_T(dim=dim, proj_drop=drop, input_resolution=input_resolution)
+            self.t_mlp = MorphFC_T(dim=dim, segment_dim=segment_dim,
+                                   proj_drop=drop, input_resolution=input_resolution)
         self.dim = dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
@@ -488,7 +489,8 @@ class BasicLayer(nn.Module):
 
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
+                 segment_dim=0):
 
         super().__init__()
         self.dim = dim
@@ -506,7 +508,8 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer,
-                                 temporal=True
+                                 temporal=True,
+                                 segment_dim=segment_dim
                                  )
             for i in range(depth)])
 
@@ -690,6 +693,7 @@ class SwinTransformerSys(nn.Module):
         self.num_features_up = int(embed_dim * 2)
         self.mlp_ratio = mlp_ratio
         self.final_upsample = final_upsample
+        self.segment_dims = [32, 16, 16, 16]
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
@@ -724,7 +728,9 @@ class SwinTransformerSys(nn.Module):
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
                                downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
-                               use_checkpoint=use_checkpoint)
+                               use_checkpoint=use_checkpoint,
+                               segment_dim=self.segment_dims[i_layer]
+                               )
             self.layers.append(layer)
 
         # build decoder layers
@@ -824,15 +830,6 @@ class SwinTransformerSys(nn.Module):
             except AttributeError:
                 pass
 
-    # @torch.jit.ignore
-    # def no_weight_decay(self):
-    #     return {'absolute_pos_embed'}
-    #
-    # @torch.jit.ignore
-    # def no_weight_decay_keywords(self):
-    #     return {'relative_position_bias_table'}
-
-    # Encoder and Bottleneck
     def forward_features(self, x, T=None):
         x = self.patch_embed(x)
         if self.ape:
