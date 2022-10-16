@@ -258,19 +258,8 @@ def main(config):
         [[4, 5, 1], [2], [3]],
         [[5, 1, 2], [3], [4]],
     ]
-    os.environ['PYTHONHASHSEED'] = str(config.rdm_seed)
-    
-    torch.manual_seed(config.rdm_seed)
-    torch.cuda.manual_seed(config.rdm_seed)
-    torch.cuda.manual_seed_all(config.rdm_seed)
-
     np.random.seed(config.rdm_seed)
-    random.seed(config.rdm_seed)
-    
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.enabled = False
-
+    torch.manual_seed(config.rdm_seed)
     prepare_output(config)
     device = torch.device(config.device)
 
