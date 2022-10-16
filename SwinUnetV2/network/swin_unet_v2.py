@@ -16,11 +16,14 @@ class MorphFC_T(nn.Module):
         super().__init__()
         self.input_resolution = input_resolution
         self.segment_dim = 8
-        dim2 = dim
-        self.mlp_t = nn.Linear(dim2, dim2, bias=qkv_bias)
+        self.dim = dim
+        self.mlp_t = nn.Linear(self.dim, self.dim, bias=qkv_bias)
 
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Linear(self.dim, self.dim)
         self.proj_drop = nn.Dropout(proj_drop)
+
+        print(dim)
+        print(self.dim)
 
     def forward(self, x, T=None):
         H, W = self.input_resolution
@@ -34,7 +37,6 @@ class MorphFC_T(nn.Module):
         # T
         t = x.reshape(B, T, H, W, self.segment_dim, S).permute(0, 4, 2, 3, 1, 5).reshape(B, self.segment_dim, H, W, T * S)
         print(t.shape)
-
         t = self.mlp_t(t).reshape(B, self.segment_dim, H, W, T, S).permute(0, 4, 2, 3, 1, 5).reshape(B, T, H, W, C)
 
         x = t
