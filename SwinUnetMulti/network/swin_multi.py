@@ -237,7 +237,7 @@ class MultiSwinTransformerBlock(nn.Module):
 
         x = shifted_x
         x = x.view(B, H * W, C)
-
+        print(x.shape)
         # Swin v2
         x = self.norm1(x)
 
@@ -315,8 +315,6 @@ class MultiWindowAttention(nn.Module):
         Ba_, Na, Ca = s1a.shape
         Bd_, Nd, Cd = s1d.shape
 
-        print(f"{C} {Ca} {Cd}")
-
         # Sentinel-2
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
@@ -345,7 +343,8 @@ class MultiWindowAttention(nn.Module):
         attn_2a = self.attn_drop(attn_2a)
 
         # x_2a = (attn_2a @ va).transpose(1, 2).reshape(B_, N, C)
-        x_2a = (attn_2a @ va).transpose(1, 2).reshape(B_, N, C)
+        # x_2a = (attn_2a @ va).transpose(1, 2)
+        x_2a = (attn_2a @ va)
         print(x_2a.shape)
 
         # Sentinel-2 and Sentinel-1 cross attention (q, kd, vd)
@@ -357,7 +356,8 @@ class MultiWindowAttention(nn.Module):
         attn_2d = attn_2d + relative_position_bias.unsqueeze(0)
         attn_2d = self.softmax(attn_2d)
         attn_2d = self.attn_drop(attn_2d)
-        x_2d = (attn_2d @ vd).transpose(1, 2).reshape(B_, N, C)
+        x_2d = (attn_2d @ vd)
+        # x_2d = (attn_2d @ vd).transpose(1, 2).reshape(B_, N, C)
 
         print(x_2d.shape)
 
