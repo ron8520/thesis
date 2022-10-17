@@ -864,7 +864,6 @@ class SwinTransformerSys(nn.Module):
         
         B, T, C, H, W = x.shape
         x = self.in_conv.smart_forward(x)
-        x = rearrange(x, 'b t c h w -> (b t) c h w')
 
         #spatial encoder
         x, x_downsample = self.forward_features(x, T=T)
