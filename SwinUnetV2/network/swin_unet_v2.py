@@ -380,13 +380,11 @@ class DownConvLayer(TemporallySharedBlock):
         self.norm = norm_layer(4 * dim)
 
     def foward(self, x):
-        H, W = self.input_resolution
-        B, L, C = x.shape
-        assert L == H * W, "input feature has wrong size"
-        assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
-
-        x = x.view(B, H, W, C)
+        B, C, H, W = x.shape
         x = self.down(x)
+
+        x = x.view(B, -1, 4 * C)  # B H/2*W/2 4*C
+
         x = self.norm(x)
         x = self.reduction(x)
         return x
@@ -492,13 +490,17 @@ class BasicLayer(nn.Module):
         else:
             self.downsample = None
 
-    def forward(self, x):
+    def forward(self, x, T=None):
         for index, blk in enumerate(self.blocks):
             if self.use_checkpoint:
                 x = checkpoint.checkpoint(blk, x)
             else:
                 x = blk(x)
         if self.downsample is not None:
+            H, W = self.input_resolution
+            B, L, C = x.shape
+            b = B // T
+            x = rearrange(x, '(b t) (h w) c -> b t c h w', b=b, t=T, h=H, w=W, c=C)
             x = self.downsample.smart_forward(x)
         return x
 
@@ -812,7 +814,7 @@ class SwinTransformerSys(nn.Module):
     #     return {'relative_position_bias_table'}
 
     # Encoder and Bottleneck
-    def forward_features(self, x):
+    def forward_features(self, x, T=None):
         x = self.patch_embed(x)
         if self.ape:
             x = x + self.absolute_pos_embed
@@ -821,7 +823,7 @@ class SwinTransformerSys(nn.Module):
 
         for layer in self.layers:
             x_downsample.append(x)
-            x = layer(x)
+            x = layer(x, T=T)
 
         x = self.norm(x)  # B L C
 
@@ -865,7 +867,7 @@ class SwinTransformerSys(nn.Module):
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
         #spatial encoder
-        x, x_downsample = self.forward_features(x)
+        x, x_downsample = self.forward_features(x, T=T)
         
         x = rearrange(x, '(b t) (h w) c -> b t c h w', 
           b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
