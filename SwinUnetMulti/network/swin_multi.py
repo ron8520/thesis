@@ -236,7 +236,6 @@ class MultiSwinTransformerBlock(nn.Module):
         shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
 
         x = shifted_x
-        x = x.view(B, H * W, C)
         print(x.shape)
         # Swin v2
         x = self.norm1(x)
