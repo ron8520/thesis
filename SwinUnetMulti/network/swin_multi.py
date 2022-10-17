@@ -299,6 +299,11 @@ class MultiWindowAttention(nn.Module):
 
         self.tau = nn.Parameter(torch.ones((num_heads, window_size[0] * window_size[1],
                                             window_size[0] * window_size[1])))
+        self.conv = nn.Sequential(
+            nn.Conv2d(2 * dim, dim, kernel_size=3, stride=1, padding=1),
+            nn.LayerNorm(dim),
+            nn.GELU()
+        )
 
     def get_continuous_relative_position_bias(self, N):
         # The continuous position bias approach adopts a small meta network on the relative coordinates
@@ -345,7 +350,6 @@ class MultiWindowAttention(nn.Module):
         # x_2a = (attn_2a @ va).transpose(1, 2).reshape(B_, N, C)
         # x_2a = (attn_2a @ va).transpose(1, 2)
         x_2a = (attn_2a @ va)
-        print(x_2a.shape)
 
         # Sentinel-2 and Sentinel-1 cross attention (q, kd, vd)
         attn_2d = torch.einsum("bhqd, bhkd -> bhqk", q, kd) / torch.maximum(
@@ -359,12 +363,12 @@ class MultiWindowAttention(nn.Module):
         x_2d = (attn_2d @ vd)
         # x_2d = (attn_2d @ vd).transpose(1, 2).reshape(B_, N, C)
 
-        print(x_2d.shape)
-        x = torch.cat([x_2a, x_2d], dim=3)
-        print(x.shape)
+        x = rearrange(torch.cat([x_2a, x_2d], dim=3), 'b h w c -> b c h w')
+        x = self.conv(x)
+        x = rearrange(x, 'b c h w -> b (h w) c')
 
-        # x = self.proj(x)
-        # x = self.proj_drop(x)
+        x = self.proj(x)
+        x = self.proj_drop(x)
 
         return x
 
