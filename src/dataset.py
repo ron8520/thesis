@@ -320,8 +320,8 @@ class PASTIS_Dataset(tdata.Dataset):
                     fill_value="extrapolate",
                 )
                 data[sat] = torch.from_numpy(interpolation(dates["S2"].numpy())).float()
-
-            data['S2'] = torch.cat((data['S2'], data['S1A'], data['S1D']), dim=1)
+            # Not concat three modality into one now
+            # data['S2'] = torch.cat((data['S2'], data['S1A'], data['S1D']), dim=1)
 
 
         if self.mono_date is not None:

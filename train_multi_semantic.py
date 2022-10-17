@@ -286,7 +286,7 @@ def main(config):
             sats=["S2", "S1A", "S1D"],
             drop_temp_s2=drop_temp_s2,
             drop_temp_s1=drop_temp_s1,
-            interpolate = config.fusion == "early"
+            interpolate=config.fusion == "early"
         )
 
         dt_train = PASTIS_Dataset(**dt_args, folds=train_folds, cache=config.cache)

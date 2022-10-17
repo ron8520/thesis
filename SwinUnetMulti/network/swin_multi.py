@@ -73,7 +73,19 @@ class Swin_multi(nn.Module):
         self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1a_swin_unet)
         self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1d_swin_unet)
         self.dims = [96, 192, 384, 768]
-        self.reduce_dims = Feature_reduce(self.dims[-1] * 3, self.dims[-1])
+        self.bottom = MultiSwinTransformerBlock(
+                    dim=768,
+                    num_heads=16,
+                    window_size=4,
+                    mlp_ratio=4.,
+                    qkv_bias=True,
+                    qk_scale=None,
+                    drop=0.,
+                    attn_drop=0.,
+                    drop_path=0.1,
+                    act_layer=nn.GELU,
+                    norm_layer=nn.LayerNorm
+                )
 
         self.concat_dims = nn.ModuleList()
         for i in range(len(self.dims)):
@@ -122,9 +134,7 @@ class Swin_multi(nn.Module):
         s1a_out, s1a_downsamples = self.s1a_swin_unet.forward_features(x['S1A'], batch_positions['S1A'])
         s1d_out, s1d_downsamples = self.s1d_swin_unet.forward_features(x['S1D'], batch_positions['S1D'])
 
-        x = torch.cat([s2_out, s1a_out, s1d_out], dim=1)
-        x = self.reduce_dims(x)
-        x = rearrange(x, 'b c h w -> b (h w) c')
+        x = self.bottom(s2_out, s1a_out, s1d_out)
 
         for i, element in enumerate(s2_downsamples):
             s2_downsamples[i] = self.concat_dims[i](s2_downsamples[i], s1a_downsamples[i], s1d_downsamples[i])
@@ -238,7 +248,7 @@ class MultiSwinTransformerBlock(nn.Module):
 
         x = shifted_x
         x = x.view(B, H * W, C)
-        print(x.shape)
+
         # Swin v2
         x = self.norm1(x)
 
@@ -345,7 +355,6 @@ class MultiWindowAttention(nn.Module):
         attn_2a = self.attn_drop(attn_2a)
 
         x_2a = (attn_2a @ va).transpose(1, 2).reshape(B_, N, C)
-        # x_2a = (attn_2a @ va).transpose(1, 2)
 
         # Sentinel-2 and Sentinel-1 cross attention (q, kd, vd)
         attn_2d = torch.einsum("bhqd, bhkd -> bhqk", q, kd) / torch.maximum(
@@ -361,7 +370,7 @@ class MultiWindowAttention(nn.Module):
         x = rearrange(torch.cat([x_2a, x_2d], dim=2), 'b (h w) c -> b c h w',
                       h=int(math.sqrt(N)), w=int(math.sqrt(N)))
         x = self.conv(x)
-        x = rearrange(x , 'b c h w -> b (h w) c')
+        x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.proj(x)
         x = self.proj_drop(x)
 
