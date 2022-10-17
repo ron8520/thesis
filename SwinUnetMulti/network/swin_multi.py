@@ -366,7 +366,7 @@ class MultiWindowAttention(nn.Module):
 
         x = rearrange(torch.cat([x_2a, x_2d], dim=3), 'b h w c -> b c h w')
         x = self.conv(x)
-
+        print(x.shape)
         x = self.proj(x)
         x = self.proj_drop(x)
 
