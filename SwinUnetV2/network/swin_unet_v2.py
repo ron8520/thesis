@@ -262,7 +262,6 @@ class SwinTransformerBlock(nn.Module):
 
     def forward(self, x):
         H, W = self.input_resolution
-        print(f"{H} {W}")
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
 
@@ -383,9 +382,8 @@ class DownConvLayer(TemporallySharedBlock):
     def forward(self, x):
         B, C, H, W = x.shape
         x = self.down(x)
-        x = rearrange(x, 'b c h w -> b h w c')
-        x = x.view(B, -1, 4 * C)  # B H/2*W/2 4*C
-
+        x = rearrange(x, 'b c h w -> b (h w) (4 c)')
+        print(x.shape)
         x = self.norm(x)
         x = self.reduction(x)
         return x
