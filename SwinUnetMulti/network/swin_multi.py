@@ -300,7 +300,7 @@ class MultiWindowAttention(nn.Module):
         self.tau = nn.Parameter(torch.ones((num_heads, window_size[0] * window_size[1],
                                             window_size[0] * window_size[1])))
         self.conv = nn.Sequential(
-            nn.Conv2d(2 * dim, dim, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(2 * head_dim, head_dim, kernel_size=3, stride=1, padding=1),
             nn.LayerNorm(dim),
             nn.GELU()
         )
