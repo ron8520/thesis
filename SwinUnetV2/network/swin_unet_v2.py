@@ -380,14 +380,28 @@ class DownConvLayer(TemporallySharedBlock):
         self.norm = norm_layer(4 * dim)
 
     def forward(self, x):
-        print(x.shape)
         x = self.down(x)
-        B, C, H, W = x.shape
-        print(f"{H} {W}")
         x = rearrange(x, 'b c h w -> b (h w) c')
-        print(x.shape)
         x = self.norm(x)
         x = self.reduction(x)
+        return x
+
+class UpConvLayer(nn.Module):
+    def __init__(self, input_resolution, dim, dim_scale=2, norm_layer=nn.LayerNorm):
+        super(UpConvLayer, self).__init__()
+        self.expand = nn.Linear(dim, 2 * dim, bias=False) if dim_scale == 2 else nn.Identity()
+        self.up = nn.ConvTranspose2d(dim, dim, kernel_size=4, stride=2, padding=1)
+        self.norm = norm_layer(dim // dim_scale)
+        self.input_resolution = input_resolution
+    def forward(self, x):
+        x = self.expand(x)
+        H, W = self.input_resolution
+        B, L, C = x.shape
+
+        x = x.view(B, H, W, C).transpose(0, 3, 1, 2)
+        x = self.up(x)
+        x = rearrange('b c h w -> b (h w) c')
+        x = self.norm(x)
         return x
 
 class PatchExpand(nn.Module):
@@ -560,7 +574,7 @@ class BasicLayer_up(nn.Module):
 
         # patch merging layer
         if upsample is not None:
-            self.upsample = PatchExpand(input_resolution, dim=dim, dim_scale=2, norm_layer=norm_layer)
+            self.upsample = UpConvLayer(input_resolution, dim=dim, dim_scale=2, norm_layer=norm_layer)
         else:
             self.upsample = None
 
