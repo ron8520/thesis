@@ -459,3 +459,375 @@ class WindowTransformerBlock(nn.Module):
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
                f"window_size={self.window_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio}"
+
+
+class RotatedVariedSizeWindowAttention(nn.Module):
+    def __init__(self, dim, num_heads, out_dim=None, window_size=1, qkv_bias=True, qk_scale=None,
+                 attn_drop=0., proj_drop=0, attn_head_dim=None, relative_pos_embedding=True, learnable=True,
+                 restart_regression=True,
+                 attn_window_size=None, shift_size=0, img_size=(1, 1), num_deform=None):
+        super().__init__()
+
+        window_size = window_size[0]
+
+        self.img_size = to_2tuple(img_size)
+        self.num_heads = num_heads
+        self.dim = dim
+        out_dim = out_dim or dim
+        self.out_dim = out_dim
+        self.relative_pos_embedding = relative_pos_embedding
+        head_dim = dim // self.num_heads
+        self.ws = window_size
+        attn_window_size = attn_window_size or window_size
+        self.attn_ws = attn_window_size or self.ws
+
+        q_size = window_size
+        rel_sp_dim = 2 * q_size - 1
+        self.rel_pos_h = nn.Parameter(torch.zeros(rel_sp_dim, head_dim))
+        self.rel_pos_w = nn.Parameter(torch.zeros(rel_sp_dim, head_dim))
+
+        self.learnable = learnable
+        self.restart_regression = restart_regression
+        if self.learnable:
+            # if num_deform is None, we set num_deform to num_heads as default
+
+            if num_deform is None:
+                num_deform = 1
+            self.num_deform = num_deform
+
+            self.sampling_offsets = nn.Sequential(
+                nn.AvgPool2d(kernel_size=window_size, stride=window_size),
+                nn.LeakyReLU(),
+                nn.Conv2d(dim, self.num_heads * self.num_deform * 2, kernel_size=1, stride=1)
+            )
+            self.sampling_scales = nn.Sequential(
+                nn.AvgPool2d(kernel_size=window_size, stride=window_size),
+                nn.LeakyReLU(),
+                nn.Conv2d(dim, self.num_heads * self.num_deform * 2, kernel_size=1, stride=1)
+            )
+            # add angle
+            self.sampling_angles = nn.Sequential(
+                nn.AvgPool2d(kernel_size=window_size, stride=window_size),
+                nn.LeakyReLU(),
+                nn.Conv2d(dim, self.num_heads * self.num_deform * 1, kernel_size=1, stride=1)
+            )
+
+        self.shift_size = shift_size % self.ws
+        # self.left_size = self.img_size
+        #        if min(self.img_size) <= self.ws:
+        #            self.shift_size = 0
+
+        # if self.shift_size > 0:
+        #     self.padding_bottom = (self.ws - self.shift_size + self.padding_bottom) % self.ws
+        #     self.padding_right = (self.ws - self.shift_size + self.padding_right) % self.ws
+
+        self.scale = qk_scale or head_dim ** -0.5
+
+        self.qkv = nn.Linear(dim, out_dim * 3, bias=qkv_bias)
+
+        # self.qkv = nn.Conv2d(dim, out_dim * 3, 1, bias=qkv_bias)
+        # self.kv = nn.Conv2d(dim, dim*2, 1, bias=False)
+
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(out_dim, out_dim)
+        # self.proj = nn.Conv2d(out_dim, out_dim, 1)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        if self.relative_pos_embedding:
+            # define a parameter table of relative position bias
+            self.relative_position_bias_table = nn.Parameter(
+                torch.zeros((window_size + attn_window_size - 1) * (window_size + attn_window_size - 1),
+                            num_heads))  # 2*Wh-1 * 2*Ww-1, nH
+
+            # get pair-wise relative position index for each token inside the window
+            coords_h = torch.arange(self.attn_ws)
+            coords_w = torch.arange(self.attn_ws)
+            coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+            coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+            relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+            relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+            relative_coords[:, :, 0] += self.attn_ws - 1  # shift to start from 0
+            relative_coords[:, :, 1] += self.attn_ws - 1
+            relative_coords[:, :, 0] *= 2 * self.attn_ws - 1
+            relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+            self.register_buffer("relative_position_index", relative_position_index)
+
+            trunc_normal_(self.relative_position_bias_table, std=.02)
+            print('The relative_pos_embedding is used')
+
+    def forward(self, x, H, W):
+
+        B, N, C = x.shape
+        assert N == H * W
+        x = x.view(B, H, W, C)
+        x = x.permute(0, 3, 1, 2).contiguous()
+        b, _, h, w = x.shape
+        shortcut = x
+        # assert h == self.img_size[0]
+        # assert w == self.img_size[1]
+        # if self.shift_size > 0:
+        padding_td = (self.ws - h % self.ws) % self.ws
+        padding_lr = (self.ws - w % self.ws) % self.ws
+        padding_top = padding_td // 2
+        padding_down = padding_td - padding_top
+        padding_left = padding_lr // 2
+        padding_right = padding_lr - padding_left
+
+        # padding on left-right-up-down
+        expand_h, expand_w = h + padding_top + padding_down, w + padding_left + padding_right
+
+        # window num in padding features
+        window_num_h = expand_h // self.ws
+        window_num_w = expand_w // self.ws
+
+        image_reference_h = torch.linspace(-1, 1, expand_h).to(x.device)
+        image_reference_w = torch.linspace(-1, 1, expand_w).to(x.device)
+        image_reference = torch.stack(torch.meshgrid(image_reference_w, image_reference_h), 0).permute(0, 2,
+                                                                                                       1).unsqueeze(
+            0)  # 1, 2, H, W
+
+        # position of the window relative to the image center
+        window_reference = nn.functional.avg_pool2d(image_reference, kernel_size=self.ws)  # 1,2, nh, nw
+        image_reference = image_reference.reshape(1, 2, window_num_h, self.ws, window_num_w,
+                                                  self.ws)  # 1, 2, nh, ws, nw, ws
+        assert window_num_h == window_reference.shape[-2]
+        assert window_num_w == window_reference.shape[-1]
+
+        window_reference = window_reference.reshape(1, 2, window_num_h, 1, window_num_w, 1)  # 1,2, nh,1, nw,1
+
+        # coords of pixels in each window
+
+        base_coords_h = torch.arange(self.attn_ws).to(x.device) * 2 * self.ws / self.attn_ws / (expand_h - 1)  # ws
+        base_coords_h = (base_coords_h - base_coords_h.mean())
+        base_coords_w = torch.arange(self.attn_ws).to(x.device) * 2 * self.ws / self.attn_ws / (expand_w - 1)
+        base_coords_w = (base_coords_w - base_coords_w.mean())
+        # base_coords = torch.stack(torch.meshgrid(base_coords_w, base_coords_h), 0).permute(0, 2, 1).reshape(1, 2, 1, self.attn_ws, 1, self.attn_ws)
+
+        # extend to each window
+        expanded_base_coords_h = base_coords_h.unsqueeze(dim=0).repeat(window_num_h, 1)  # ws -> 1,ws -> nh,ws
+        assert expanded_base_coords_h.shape[0] == window_num_h
+        assert expanded_base_coords_h.shape[1] == self.attn_ws
+        expanded_base_coords_w = base_coords_w.unsqueeze(dim=0).repeat(window_num_w, 1)  # nw,ws
+        assert expanded_base_coords_w.shape[0] == window_num_w
+        assert expanded_base_coords_w.shape[1] == self.attn_ws
+        expanded_base_coords_h = expanded_base_coords_h.reshape(-1)  # nh*ws
+        expanded_base_coords_w = expanded_base_coords_w.reshape(-1)  # nw*ws
+
+        window_coords = torch.stack(torch.meshgrid(expanded_base_coords_w, expanded_base_coords_h), 0).permute(0, 2,
+                                                                                                               1).reshape(
+            1, 2, window_num_h, self.attn_ws, window_num_w, self.attn_ws)  # 1, 2, nh, ws, nw, ws
+        # base_coords = window_reference+window_coords
+        base_coords = image_reference
+
+        # padding feature
+        x = torch.nn.functional.pad(x, (padding_left, padding_right, padding_top, padding_down))
+
+        if self.restart_regression:
+            # compute for each head in each batch
+            coords = base_coords.repeat(b * self.num_heads, 1, 1, 1, 1, 1)  # B*nH, 2, nh, ws, nw, ws
+        if self.learnable:
+            # offset factors
+            sampling_offsets = self.sampling_offsets(x)
+
+            num_predict_total = b * self.num_heads * self.num_deform
+
+            sampling_offsets = sampling_offsets.reshape(num_predict_total, 2, window_num_h, window_num_w)
+            sampling_offsets[:, 0, ...] = sampling_offsets[:, 0, ...] / (h // self.ws)
+            sampling_offsets[:, 1, ...] = sampling_offsets[:, 1, ...] / (w // self.ws)
+
+            # scale fators
+            sampling_scales = self.sampling_scales(x)  # B, heads*2, h // window_size, w // window_size
+            sampling_scales = sampling_scales.reshape(num_predict_total, 2, window_num_h, window_num_w)
+
+            # rotate factor
+            sampling_angle = self.sampling_angles(x)
+            sampling_angle = sampling_angle.reshape(num_predict_total, 1, window_num_h, window_num_w)
+
+            # first scale
+
+            window_coords = window_coords * (sampling_scales[:, :, :, None, :, None] + 1)
+
+            # then rotate around window center
+
+            window_coords_r = window_coords.clone()
+
+            # 0:x,column, 1:y,row
+
+            window_coords_r[:, 0, :, :, :, :] = -window_coords[:, 1, :, :, :, :] * torch.sin(
+                sampling_angle[:, 0, :, None, :, None]) + window_coords[:, 0, :, :, :, :] * torch.cos(
+                sampling_angle[:, 0, :, None, :, None])
+            window_coords_r[:, 1, :, :, :, :] = window_coords[:, 1, :, :, :, :] * torch.cos(
+                sampling_angle[:, 0, :, None, :, None]) + window_coords[:, 0, :, :, :, :] * torch.sin(
+                sampling_angle[:, 0, :, None, :, None])
+
+            # system transformation: window center -> image center
+
+            coords = window_reference + window_coords_r + sampling_offsets[:, :, :, None, :, None]
+
+        # final offset
+        sample_coords = coords.permute(0, 2, 3, 4, 5, 1).reshape(num_predict_total, self.attn_ws * window_num_h,
+                                                                 self.attn_ws * window_num_w, 2)
+
+        qkv = self.qkv(shortcut.permute(0, 2, 3, 1).reshape(b, -1, self.dim)).permute(0, 2, 1).reshape(b, -1, h,
+                                                                                                       w).reshape(b, 3,
+                                                                                                                  self.num_heads,
+                                                                                                                  self.out_dim // self.num_heads,
+                                                                                                                  h,
+                                                                                                                  w).transpose(
+            1, 0).reshape(3 * b * self.num_heads, self.out_dim // self.num_heads, h, w)
+
+        qkv = torch.nn.functional.pad(qkv, (padding_left, padding_right, padding_top, padding_down)).reshape(3,
+                                                                                                             b * self.num_heads,
+                                                                                                             self.out_dim // self.num_heads,
+                                                                                                             h + padding_td,
+                                                                                                             w + padding_lr)
+
+        q, k, v = qkv[0], qkv[1], qkv[2]  # b*self.num_heads, self.out_dim // self.num_heads, H，W
+
+        k_selected = F.grid_sample(
+            k.reshape(num_predict_total, self.out_dim // self.num_heads // self.num_deform, h + padding_td,
+                      w + padding_lr),
+            grid=sample_coords, padding_mode='zeros', align_corners=True
+        ).reshape(b * self.num_heads, self.out_dim // self.num_heads, h + padding_td, w + padding_lr)
+        v_selected = F.grid_sample(
+            v.reshape(num_predict_total, self.out_dim // self.num_heads // self.num_deform, h + padding_td,
+                      w + padding_lr),
+            grid=sample_coords, padding_mode='zeros', align_corners=True
+        ).reshape(b * self.num_heads, self.out_dim // self.num_heads, h + padding_td, w + padding_lr)
+
+        q = q.reshape(b, self.num_heads, self.out_dim // self.num_heads, window_num_h, self.ws, window_num_w,
+                      self.ws).permute(0, 3, 5, 1, 4, 6, 2).reshape(b * window_num_h * window_num_w, self.num_heads,
+                                                                    self.ws * self.ws, self.out_dim // self.num_heads)
+        k = k_selected.reshape(b, self.num_heads, self.out_dim // self.num_heads, window_num_h, self.attn_ws,
+                               window_num_w, self.attn_ws).permute(0, 3, 5, 1, 4, 6, 2).reshape(
+            b * window_num_h * window_num_w, self.num_heads, self.attn_ws * self.attn_ws,
+            self.out_dim // self.num_heads)
+        v = v_selected.reshape(b, self.num_heads, self.out_dim // self.num_heads, window_num_h, self.attn_ws,
+                               window_num_w, self.attn_ws).permute(0, 3, 5, 1, 4, 6, 2).reshape(
+            b * window_num_h * window_num_w, self.num_heads, self.attn_ws * self.attn_ws,
+            self.out_dim // self.num_heads)
+
+        dots = (q @ k.transpose(-2, -1)) * self.scale
+
+        dots = calc_rel_pos_spatial(dots, q, (self.ws, self.ws), (self.attn_ws, self.attn_ws), self.rel_pos_h,
+                                    self.rel_pos_w)
+
+        if self.relative_pos_embedding:
+            relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+                self.ws * self.ws, self.attn_ws * self.attn_ws, -1)  # Wh*Ww,Wh*Ww,nH
+            relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+            dots += relative_position_bias.unsqueeze(0)
+
+        attn = dots.softmax(dim=-1)
+        out = attn @ v
+
+        out = rearrange(out, '(b hh ww) h (ws1 ws2) d -> b (h d) (hh ws1) (ww ws2)', h=self.num_heads, b=b,
+                        hh=window_num_h, ww=window_num_w, ws1=self.ws, ws2=self.ws)
+        # if self.shift_size > 0:
+        # out = torch.masked_select(out, self.select_mask).reshape(b, -1, h, w)
+        out = out[:, :, padding_top:h + padding_top, padding_left:w + padding_left]
+
+        out = out.permute(0, 2, 3, 1).reshape(B, H * W, -1)
+
+        out = self.proj(out)
+        out = self.proj_drop(out)
+
+        return out
+
+    def _clip_grad(self, grad_norm):
+        # print('clip grads of the model for selection')
+        nn.utils.clip_grad_norm_(self.sampling_offsets.parameters(), grad_norm)
+        nn.utils.clip_grad_norm_(self.sampling_scales.parameters(), grad_norm)
+
+    def _reset_parameters(self):
+        if self.learnable:
+            nn.init.constant_(self.sampling_offsets[-1].weight, 0.)
+            nn.init.constant_(self.sampling_offsets[-1].bias, 0.)
+            nn.init.constant_(self.sampling_scales[-1].weight, 0.)
+            nn.init.constant_(self.sampling_scales[-1].bias, 0.)
+
+    def flops(self, ):
+        N = self.ws * self.ws
+        M = self.attn_ws * self.attn_ws
+        # calculate flops for 1 window with token length of N
+        flops = 0
+        # qkv = self.qkv(x)
+        flops += N * self.dim * 3 * self.dim
+        # attn = (q @ k.transpose(-2, -1))
+        flops += self.num_heads * N * (self.dim // self.num_heads) * M
+        #  x = (attn @ v)
+        flops += self.num_heads * N * M * (self.dim // self.num_heads)
+        # x = self.proj(x)
+        flops += N * self.dim * self.dim
+        h, w = self.img_size[0] + self.shift_size + self.padding_bottom, self.img_size[
+            1] + self.shift_size + self.padding_right
+        flops *= (h / self.ws * w / self.ws)
+
+        # for sampling
+        flops_sampling = 0
+        if self.learnable:
+            # pooling
+            flops_sampling += h * w * self.dim
+            # regressing the shift and scale
+            flops_sampling += 2 * (h / self.ws + w / self.ws) * self.num_heads * 2 * self.dim
+            # calculating the coords
+            flops_sampling += h / self.ws * self.attn_ws * w / self.ws * self.attn_ws * 2
+        # grid sampling attended features
+        flops_sampling += h / self.ws * self.attn_ws * w / self.ws * self.attn_ws * self.dim
+
+        flops += flops_sampling
+
+        return flops
+
+def calc_rel_pos_spatial(
+    attn,
+    q,
+    q_shape,
+    k_shape,
+    rel_pos_h,
+    rel_pos_w,
+    ):
+    """
+    Spatial Relative Positional Embeddings.
+    """
+    sp_idx = 0
+    q_h, q_w = q_shape
+    k_h, k_w = k_shape
+
+    # Scale up rel pos if shapes for q and k are different.
+    q_h_ratio = max(k_h / q_h, 1.0)
+    k_h_ratio = max(q_h / k_h, 1.0)
+    dist_h = (
+        torch.arange(q_h)[:, None] * q_h_ratio - torch.arange(k_h)[None, :] * k_h_ratio
+    )
+
+    # dist_h [1-ws,ws-1]->[0,2ws-2]
+
+    dist_h += (k_h - 1) * k_h_ratio
+    q_w_ratio = max(k_w / q_w, 1.0)
+    k_w_ratio = max(q_w / k_w, 1.0)
+    dist_w = (
+        torch.arange(q_w)[:, None] * q_w_ratio - torch.arange(k_w)[None, :] * k_w_ratio
+    )
+    dist_w += (k_w - 1) * k_w_ratio
+
+    # get pos encode, qwh, kwh, C'
+
+    Rh = rel_pos_h[dist_h.long()]
+    Rw = rel_pos_w[dist_w.long()]
+
+    B, n_head, q_N, dim = q.shape
+
+    r_q = q[:, :, sp_idx:].reshape(B, n_head, q_h, q_w, dim) # B, H, qwh, qww, C
+    rel_h = torch.einsum("byhwc,hkc->byhwk", r_q, Rh)# B, H, qwh, qww, C'; qwh, kWh, C' -> B,H,qwh,qww,kwh
+    rel_w = torch.einsum("byhwc,wkc->byhwk", r_q, Rw)# B,H,qwh,qww,kww
+
+    # attn: B,H,qwh,qww,kwh,kww
+
+    attn[:, :, sp_idx:, sp_idx:] = (
+        attn[:, :, sp_idx:, sp_idx:].view(B, -1, q_h, q_w, k_h, k_w)
+        + rel_h[:, :, :, :, :, None]
+        + rel_w[:, :, :, :, None, :]
+    ).view(B, -1, q_h * q_w, k_h * k_w)
+
+    return attn
