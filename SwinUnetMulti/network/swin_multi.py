@@ -214,7 +214,7 @@ class MultiSwinTransformerBlock(nn.Module):
         Ba, Ca, Ha, Wa = s1a.shape
         Bd, Cd, Hd, Wd = s1d.shape
 
-        shortcut = x
+        shortcut = rearrange(x, 'b c h w -> h (h w) c')
 
         shifted_x = x
 
@@ -236,6 +236,7 @@ class MultiSwinTransformerBlock(nn.Module):
         shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
 
         x = shifted_x
+        x = x.view(B, H * W, C)
         print(x.shape)
         # Swin v2
         x = self.norm1(x)
@@ -359,6 +360,8 @@ class MultiWindowAttention(nn.Module):
         # x_2d = (attn_2d @ vd).transpose(1, 2).reshape(B_, N, C)
 
         print(x_2d.shape)
+        x = torch.cat([x_2a, x_2d], dim=3)
+        print(x.shape)
 
         # x = self.proj(x)
         # x = self.proj_drop(x)
