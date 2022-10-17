@@ -698,7 +698,7 @@ class SwinTransformerSys(nn.Module):
         self.num_features_up = int(embed_dim * 2)
         self.mlp_ratio = mlp_ratio
         self.final_upsample = final_upsample
-        self.tokens = ['VSA', 'VSA', 'VSA', 'VSA']
+        self.tokens = ['RVSA', 'RVSA', 'RVSA', 'RVSA']
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
