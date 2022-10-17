@@ -375,7 +375,7 @@ class DownConvLayer(TemporallySharedBlock):
         super().__init__()
         self.input_resolution = input_resolution
         self.dim = dim
-        self.down = nn.Conv2d(dim, dim, kernel_size=4, stride=2, padding=1)
+        self.down = nn.Conv2d(dim, 4 * dim, kernel_size=4, stride=2, padding=1)
         self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
         self.norm = norm_layer(4 * dim)
 
@@ -383,8 +383,8 @@ class DownConvLayer(TemporallySharedBlock):
         print(x.shape)
         x = self.down(x)
         B, C, H, W = x.shape
-        x = rearrange(x, 'b c h w -> b h w c')
-        x = x.view(B, -1, C * 4)
+        print(f"{H} {W}")
+        x = rearrange(x, 'b c h w -> b (h w) c')
         print(x.shape)
         x = self.norm(x)
         x = self.reduction(x)
