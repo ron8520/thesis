@@ -398,8 +398,8 @@ class UpConvLayer(nn.Module):
         H, W = self.input_resolution
         B, L, C = x.shape
 
-        x = x.view(B, H, W, C).reshape(0, 3, 1, 2).continuous()
-        print(x.shape)
+        x = x.view(B, H, W, C)
+        x = rearrange(x, 'b h w c -> b c h w')
         x = self.up(x)
         x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.norm(x)
