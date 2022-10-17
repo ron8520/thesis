@@ -205,8 +205,9 @@ class TemporallySharedBlock(nn.Module):
                     out = self.forward(out)
             else:
                 out = self.forward(out)
-            _, c, h, w = out.shape
-            out = out.view(b, t, c, h, w)
+            ## For swin transformer, does not need this following operaiton
+            # _, c, h, w = out.shape
+            # out = out.view(b, t, c, h, w)
             return out
 
 
