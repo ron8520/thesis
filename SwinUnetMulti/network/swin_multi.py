@@ -301,6 +301,7 @@ class MultiWindowAttention(nn.Module):
                                             window_size[0] * window_size[1])))
         self.conv = nn.Sequential(
             nn.Conv2d(2 * head_dim, head_dim, kernel_size=3, stride=1, padding=1),
+            Rearrange('b c h w -> b (h w) c'),
             nn.LayerNorm(head_dim),
             nn.GELU()
         )
@@ -365,7 +366,6 @@ class MultiWindowAttention(nn.Module):
 
         x = rearrange(torch.cat([x_2a, x_2d], dim=3), 'b h w c -> b c h w')
         x = self.conv(x)
-        x = rearrange(x, 'b c h w -> b (h w) c')
 
         x = self.proj(x)
         x = self.proj_drop(x)
