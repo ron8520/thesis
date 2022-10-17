@@ -385,7 +385,7 @@ class DownConvLayer(TemporallySharedBlock):
         assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
 
         x = x.view(B, H, W, C)
-        x = self.conv(x)
+        x = self.down(x)
         x = self.norm(x)
         x = self.reduction(x)
         return x
