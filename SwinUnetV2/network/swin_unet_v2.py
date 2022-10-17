@@ -380,9 +380,9 @@ class DownConvLayer(TemporallySharedBlock):
         self.norm = norm_layer(4 * dim)
 
     def forward(self, x):
-        B, C, H, W = x.shape
         x = self.down(x)
-        x = rearrange(x, 'b c h w -> b (h w) (4 c)')
+        B, C, H, W = x.shape
+        x = rearrange(x, 'b c h w -> b (h w) (4 c)', b=B, c=C, h=H, w=W)
         print(x.shape)
         x = self.norm(x)
         x = self.reduction(x)
