@@ -248,7 +248,8 @@ class SwinTransformerBlock(nn.Module):
         #     self.gamma2 = nn.Parameter(layer_scale * torch.ones(dim), requires_grad=True)
         elif self.token == "RVSA":
             self.attn = RotatedVariedSizeWindowAttention(
-                dim, out_dim=dim, num_heads=num_heads, window_size=self.window_size, qkv_bias=qkv_bias,
+                dim, input_resolution=self.input_resolution, out_dim=dim, num_heads=num_heads,
+                window_size=self.window_size, qkv_bias=qkv_bias,
                 qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop
             )
         elif self.token == "window":

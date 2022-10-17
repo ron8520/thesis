@@ -462,15 +462,14 @@ class WindowTransformerBlock(nn.Module):
 
 
 class RotatedVariedSizeWindowAttention(nn.Module):
-    def __init__(self, dim, num_heads, out_dim=None, window_size=1, qkv_bias=True, qk_scale=None,
+    def __init__(self, dim, input_resolution, num_heads, out_dim=None, window_size=1, qkv_bias=True, qk_scale=None,
                  attn_drop=0., proj_drop=0, relative_pos_embedding=True, learnable=True,
                  restart_regression=True,
-                 attn_window_size=None, shift_size=0, img_size=(1, 1), num_deform=None):
+                 attn_window_size=None, shift_size=0, num_deform=None):
         super().__init__()
 
         window_size = window_size
-
-        self.img_size = to_2tuple(img_size)
+        self.input_resolution = input_resolution
         self.num_heads = num_heads
         self.dim = dim
         out_dim = out_dim or dim
@@ -555,8 +554,8 @@ class RotatedVariedSizeWindowAttention(nn.Module):
             trunc_normal_(self.relative_position_bias_table, std=.02)
             print('The relative_pos_embedding is used')
 
-    def forward(self, x, H, W):
-
+    def forward(self, x):
+        H, W = self.input_resolution
         B, N, C = x.shape
         assert N == H * W
         x = x.view(B, H, W, C)
