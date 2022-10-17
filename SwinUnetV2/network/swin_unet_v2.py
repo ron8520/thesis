@@ -390,7 +390,7 @@ class UpConvLayer(nn.Module):
     def __init__(self, input_resolution, dim, dim_scale=2, norm_layer=nn.LayerNorm):
         super(UpConvLayer, self).__init__()
         self.expand = nn.Linear(dim, 2 * dim, bias=False) if dim_scale == 2 else nn.Identity()
-        self.up = nn.ConvTranspose2d(dim, dim, kernel_size=4, stride=2, padding=1)
+        self.up = nn.ConvTranspose2d(2 * dim, dim // dim_scale, kernel_size=4, stride=2, padding=1)
         self.norm = norm_layer(dim // dim_scale)
         self.input_resolution = input_resolution
     def forward(self, x):
