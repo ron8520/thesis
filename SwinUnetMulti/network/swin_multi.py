@@ -6,6 +6,7 @@ from einops.layers.torch import Rearrange
 from .swin_unet_v2 import SwinTransformerSys, Mlp_Relu, Mlp, window_partition, window_reverse
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from src.backbones.componets import Feature_aliasing, Feature_reduce
+import math
 
 
 class Swin_multi(nn.Module):
@@ -299,12 +300,7 @@ class MultiWindowAttention(nn.Module):
 
         self.tau = nn.Parameter(torch.ones((num_heads, window_size[0] * window_size[1],
                                             window_size[0] * window_size[1])))
-        self.conv = nn.Sequential(
-            nn.Conv2d(2 * head_dim, head_dim, kernel_size=3, stride=1, padding=1),
-            Rearrange('b c h w -> b (h w) c'),
-            nn.LayerNorm(head_dim),
-            nn.GELU()
-        )
+        self.conv = Feature_reduce(2 * dim, dim)
 
     def get_continuous_relative_position_bias(self, N):
         # The continuous position bias approach adopts a small meta network on the relative coordinates
@@ -348,9 +344,8 @@ class MultiWindowAttention(nn.Module):
         attn_2a = self.softmax(attn_2a)
         attn_2a = self.attn_drop(attn_2a)
 
-        # x_2a = (attn_2a @ va).transpose(1, 2).reshape(B_, N, C)
+        x_2a = (attn_2a @ va).transpose(1, 2).reshape(B_, N, C)
         # x_2a = (attn_2a @ va).transpose(1, 2)
-        x_2a = (attn_2a @ va)
 
         # Sentinel-2 and Sentinel-1 cross attention (q, kd, vd)
         attn_2d = torch.einsum("bhqd, bhkd -> bhqk", q, kd) / torch.maximum(
@@ -361,12 +356,12 @@ class MultiWindowAttention(nn.Module):
         attn_2d = attn_2d + relative_position_bias.unsqueeze(0)
         attn_2d = self.softmax(attn_2d)
         attn_2d = self.attn_drop(attn_2d)
-        x_2d = (attn_2d @ vd)
-        # x_2d = (attn_2d @ vd).transpose(1, 2).reshape(B_, N, C)
+        x_2d = (attn_2d @ vd).transpose(1, 2).reshape(B_, N, C)
 
-        x = rearrange(torch.cat([x_2a, x_2d], dim=3), 'b h w c -> b c h w')
+        x = rearrange(torch.cat([x_2a, x_2d], dim=2), 'b (h w) c -> b c h w',
+                      h=int(math.sqrt(N)), w=int(math.sqrt(N)))
         x = self.conv(x)
-        print(x.shape)
+        x = rearrange(x , 'b c h w -> b (h w) c')
         x = self.proj(x)
         x = self.proj_drop(x)
 
