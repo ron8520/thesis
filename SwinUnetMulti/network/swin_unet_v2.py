@@ -807,7 +807,6 @@ class SwinTransformerSys(nn.Module):
           x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
             b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])   
           x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
-          # x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')  
 
         return x, x_downsample
 

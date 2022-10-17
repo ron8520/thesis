@@ -209,33 +209,6 @@ class MultiSwinTransformerBlock(nn.Module):
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-        # if self.shift_size > 0:
-        #     # calculate attention mask for SW-MSA
-        #     H, W = self.input_resolution
-        #     img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
-        #     h_slices = (slice(0, -self.window_size),
-        #                 slice(-self.window_size, -self.shift_size),
-        #                 slice(-self.shift_size, None))
-        #     w_slices = (slice(0, -self.window_size),
-        #                 slice(-self.window_size, -self.shift_size),
-        #                 slice(-self.shift_size, None))
-        #     cnt = 0
-        #     for h in h_slices:
-        #         for w in w_slices:
-        #             img_mask[:, h, w, :] = cnt
-        #             cnt += 1
-        #
-        #     mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
-        #     mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
-        #     attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
-        #     attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
-        # else:
-        #     attn_mask = None
-
-        # self.register_buffer("attn_mask", attn_mask)
-        # Use CNN for local feature, Borrow from ViTAE
-        # self.cnn = cnn
-
     def forward(self, x, s1a, s1d):
         B, C, H, W = x.shape
         Ba, Ca, Ha, Wa = s1a.shape
@@ -322,11 +295,8 @@ class MultiWindowAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-        # Swin v1
-        # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
-        # Swin v2, Scaled cosine attention
         self.tau = nn.Parameter(torch.ones((num_heads, window_size[0] * window_size[1],
                                             window_size[0] * window_size[1])))
 
@@ -344,6 +314,8 @@ class MultiWindowAttention(nn.Module):
         B_, N, C = x.shape
         Ba_, Na, Ca = s1a.shape
         Bd_, Nd, Cd = s1d.shape
+
+        print(f"{C} {Ca} {Cd}")
 
         # Sentinel-2
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -370,11 +342,10 @@ class MultiWindowAttention(nn.Module):
         attn_2a = attn_2a + relative_position_bias.unsqueeze(0)
 
         attn_2a = self.softmax(attn_2a)
-
         attn_2a = self.attn_drop(attn_2a)
 
         # x_2a = (attn_2a @ va).transpose(1, 2).reshape(B_, N, C)
-        x_2a = (attn_2a @ va).transpose(1, 2)
+        x_2a = (attn_2a @ va).transpose(1, 2).reshape(B_, N, C)
         print(x_2a.shape)
 
         # Sentinel-2 and Sentinel-1 cross attention (q, kd, vd)
@@ -384,8 +355,9 @@ class MultiWindowAttention(nn.Module):
         attn_2d = attn_2d / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
 
         attn_2d = attn_2d + relative_position_bias.unsqueeze(0)
-
-        x_2d = (attn_2d @ vd).transpose(1, 2)
+        attn_2d = self.softmax(attn_2d)
+        attn_2d = self.attn_drop(attn_2d)
+        x_2d = (attn_2d @ vd).transpose(1, 2).reshape(B_, N, C)
 
         print(x_2d.shape)
 
