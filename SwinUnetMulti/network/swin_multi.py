@@ -214,7 +214,7 @@ class MultiSwinTransformerBlock(nn.Module):
         Ba, Ca, Ha, Wa = s1a.shape
         Bd, Cd, Hd, Wd = s1d.shape
 
-        shortcut = rearrange(x, 'b c h w -> h (h w) c')
+        shortcut = rearrange(x, 'b c h w -> h (h w) c', b=B, c=C, h=H, w=W)
 
         shifted_x = x
 
