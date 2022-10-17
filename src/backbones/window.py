@@ -463,12 +463,12 @@ class WindowTransformerBlock(nn.Module):
 
 class RotatedVariedSizeWindowAttention(nn.Module):
     def __init__(self, dim, num_heads, out_dim=None, window_size=1, qkv_bias=True, qk_scale=None,
-                 attn_drop=0., proj_drop=0, attn_head_dim=None, relative_pos_embedding=True, learnable=True,
+                 attn_drop=0., proj_drop=0, relative_pos_embedding=True, learnable=True,
                  restart_regression=True,
                  attn_window_size=None, shift_size=0, img_size=(1, 1), num_deform=None):
         super().__init__()
 
-        window_size = window_size[0]
+        window_size = window_size
 
         self.img_size = to_2tuple(img_size)
         self.num_heads = num_heads
