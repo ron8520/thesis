@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import torch.nn as nn
 
 
@@ -57,7 +58,7 @@ class SimplifiedScaledDotProductAttention(nn.Module):
         k = keys.view(b_s, nk, self.num_heads, self.d_k).permute(0, 2, 3, 1)  # (b_s, head, d_k, nk)
         v = values.view(b_s, nk, self.num_heads, self.d_v).permute(0, 2, 1, 3)  # (b_s, head, nk, d_v)
 
-        att = nn.matmul(q, k) / np.sqrt(self.d_k)  # (b_s, h, nq, nk)
+        att = torch.matmul(q, k) / np.sqrt(self.d_k)  # (b_s, h, nq, nk)
         if attention_weights is not None:
             att = att * attention_weights
         if attention_mask is not None:
