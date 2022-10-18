@@ -839,7 +839,7 @@ class SwinTransformerSys(nn.Module):
         # SE enhance feature
         x = rearrange(x, 'b (h w) c -> b c h w', h=self.features_sizes[-1], w=self.features_sizes[-1])
         x = self.se_last_stage(x)
-        x = rearrange(x, '(b t) h w c -> b t c h w', b=B, t=T)
+        x = rearrange(x, '(b t) c h w -> b t c h w', b=B, t=T)
         
         x, att = self.temporal_encoder(
           x,
@@ -851,10 +851,10 @@ class SwinTransformerSys(nn.Module):
 
         # Reshape back to 5 dims 
         for i, elements in enumerate(x_downsample):
-            x_downsample[i] = rearrange(elements, 'b (h w) c -> b h w c',
+            x_downsample[i] = rearrange(elements, 'b (h w) c -> b c h w',
                                         h=self.features_sizes[i], w=self.features_sizes[i])
             x_downsample[i] = self.se_list[i](elements)
-            x_downsample[i] = rearrange(elements, '(b t) h w c -> b t c h w', b=B, t=T)
+            x_downsample[i] = rearrange(elements, '(b t) c h w -> b t c h w', b=B, t=T)
             x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
             x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')
 
