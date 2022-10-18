@@ -65,7 +65,7 @@ class SimplifiedScaledDotProductAttention(nn.Module):
         if attention_mask is not None:
             attention_mask = attention_mask.unsqueeze(-1).repeat(1, 1, N)
             attention_mask = attention_mask.permute(0, 2, 1).contiguous().view(b_s, nq)
-            attention_mask = attention_mask.unsqueeze(-1).repeat((self.num_heads, 1))
+            attention_mask = attention_mask.repeat((self.num_heads, 1))
             print(attention_mask.shape)
             att = att.masked_fill(attention_mask, -np.inf)
         att = nn.softmax(att, -1)
