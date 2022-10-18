@@ -16,7 +16,7 @@ import torch.utils.data as data
 from src import utils, model_utils
 from src.dataset import PASTIS_Dataset
 
-from train_semantic import iterate, overall_performance, save_results
+from train_transformer_semantic import iterate, overall_performance, save_results
 
 parser = argparse.ArgumentParser()
 # Model parameters
