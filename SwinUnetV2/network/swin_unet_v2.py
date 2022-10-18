@@ -270,7 +270,7 @@ class SwinTransformerBlock(nn.Module):
         assert L == H * W, "input feature has wrong size"
 
         if self.temporal:
-            x = rearrange(x, '(b t) n c -> (b n) t c', b=B// T, t=T)
+            x = rearrange(x, '(b t) n c -> (b n) t c', b=B//T, t=T)
             temporal_shortcut = x
             xt = self.temporal_att(x, x, x, attention_mask=pad_mask, N=L)
             x = xt + temporal_shortcut
@@ -309,9 +309,6 @@ class SwinTransformerBlock(nn.Module):
 
         # FFN
         x = shortcut + self.drop_path(x)
-
-        # Swin v1
-        # x = x + self.drop_path(self.mlp(self.norm2(x)))
 
         # Swin v2
         x = x + self.drop_path(self.norm2(self.mlp(x)))

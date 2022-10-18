@@ -65,10 +65,10 @@ class SimplifiedScaledDotProductAttention(nn.Module):
             attention_mask = attention_mask.permute(0, 2, 1).contiguous().view(b_s, nq)
             print(attention_mask.shape)
             att = att.masked_fill(attention_mask, -np.inf)
-        att = nn.torch.softmax(att, -1)
+        att = nn.softmax(att, -1)
         att = self.dropout(att)
 
-        out = nn.torch.matmul(att, v).permute(0, 2, 1, 3).contiguous().view(b_s, nq,
+        out = nn.matmul(att, v).permute(0, 2, 1, 3).contiguous().view(b_s, nq,
                                                                             self.h * self.d_v)  # (b_s, nq, h*d_v)
         out = self.fc_o(out)  # (b_s, nq, d_model)
         return out
