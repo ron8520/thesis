@@ -59,6 +59,7 @@ class SimplifiedScaledDotProductAttention(nn.Module):
         v = values.view(b_s, nk, self.num_heads, self.d_v).permute(0, 2, 1, 3)  # (b_s, head, nk, d_v)
 
         att = torch.matmul(q, k) / np.sqrt(self.d_k)  # (b_s, h, nq, nk)
+        print(att.shape)
         if attention_weights is not None:
             att = att * attention_weights
         if attention_mask is not None:
