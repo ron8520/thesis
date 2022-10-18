@@ -67,7 +67,7 @@ class SimplifiedScaledDotProductAttention(nn.Module):
             attention_mask = attention_mask.permute(0, 2, 1).contiguous().view(b_s, nq)
             attention_mask = repeat(attention_mask, 'b t -> b h t', h=self.num_heads)
             attention_mask = repeat(attention_mask, 'b h t -> b h t t1', t1=nq)
-            att = att.masked_fill(attention_mask, -np.inf)
+            att = att.masked_fill(attention_mask, -1e3)
         att = self.softmax(att)
         att = self.dropout(att)
 
