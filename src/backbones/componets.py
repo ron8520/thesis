@@ -71,8 +71,7 @@ class SimplifiedScaledDotProductAttention(nn.Module):
         att = self.softmax(att)
         att = self.dropout(att)
 
-        out = (att @ v).permute(0, 2, 1, 3).contiguous().view(b_s, nq,
-                                                                            self.h * self.d_v)  # (b_s, nq, h*d_v)
+        out = (att @ v).permute(0, 2, 1, 3).contiguous().view(b_s, nq, self.num_heads * self.d_v)  # (b_s, nq, h*d_v)
         out = self.fc_o(out)  # (b_s, nq, d_model)
         return out
 
