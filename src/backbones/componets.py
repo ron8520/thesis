@@ -25,7 +25,7 @@ class SimplifiedScaledDotProductAttention(nn.Module):
 
         self.fc_o = nn.Linear(num_heads * self.d_v, d_model)
         self.dropout = nn.Dropout(dropout)
-
+        self.softmax = nn.Softmax(dim=-1)
         self.init_weights()
 
     def init_weights(self):
@@ -60,7 +60,6 @@ class SimplifiedScaledDotProductAttention(nn.Module):
         v = values.view(b_s, nk, self.num_heads, self.d_v).permute(0, 2, 1, 3)  # (b_s, head, nk, d_v)
 
         att = torch.matmul(q, k) / np.sqrt(self.d_k)  # (b_s, h, nq, nk)
-        print(att.shape)
         if attention_weights is not None:
             att = att * attention_weights
         if attention_mask is not None:
@@ -68,9 +67,8 @@ class SimplifiedScaledDotProductAttention(nn.Module):
             attention_mask = attention_mask.permute(0, 2, 1).contiguous().view(b_s, nq)
             attention_mask = repeat(attention_mask, 'b t -> b h t', h=self.num_heads)
             attention_mask = repeat(attention_mask, 'b h t -> b h t t1', t1=nq)
-            print(attention_mask.shape)
             att = att.masked_fill(attention_mask, -np.inf)
-        att = nn.Softmax(att, -1)
+        att = nn.Softmax(att)
         att = self.dropout(att)
 
         out = nn.matmul(att, v).permute(0, 2, 1, 3).contiguous().view(b_s, nq,
