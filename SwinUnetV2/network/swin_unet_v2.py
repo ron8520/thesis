@@ -845,8 +845,7 @@ class SwinTransformerSys(nn.Module):
         pad_mask = (
           (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
         )  # BxT pad mask
-        print("pad_mask shape ")
-        print(pad_mask.shape)
+
         B, T, C, H, W = x.shape
         x = self.in_conv.smart_forward(x)
         x = rearrange(x, 'b t c h w -> (b t) c h w')

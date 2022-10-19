@@ -120,8 +120,6 @@ class LTAE2d(nn.Module):
             # bp = bp.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
             bp = repeat(batch_positions, 'b t -> b t n', n=L)
             bp = rearrange(bp, 'b t n -> (b n) t')
-            print(out.shape)
-            print(bp.shape)
             out = out + self.positional_encoder(bp)
 
         out, attn = self.attention_heads(out, pad_mask=pad_mask)
@@ -178,7 +176,7 @@ class MultiHeadAttention(nn.Module):
             pad_mask = pad_mask.repeat(
                 (n_head, 1)
             )  # replicate pad_mask for each head (nxb) x lk
-
+        print(pad_mask.shape)
         v = torch.stack(v.split(v.shape[-1] // n_head, dim=-1)).view(
             n_head * sz_b, seq_len, -1
         )
