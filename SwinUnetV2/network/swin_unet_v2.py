@@ -458,8 +458,8 @@ class FinalPatchExpand_X4(nn.Module):
         return x
 
 class FinalUpConvLayer(nn.Module):
-    def __int__(self, input_resolution, dim, dim_scale=4, norm_layer=nn.LayerNorm):
-        super().__int__()
+    def __init__(self, input_resolution, dim, dim_scale=4, norm_layer=nn.LayerNorm):
+        super().__init__()
         self.expand = nn.Linear(dim, 16 * dim, bias=False)
         self.up = nn.ConvTranspose2d(16 * dim, dim // dim_scale ** 2, kernel_size=4, stride=4, padding=1)
         self.norm = norm_layer(dim)
