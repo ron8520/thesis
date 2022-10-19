@@ -178,7 +178,7 @@ class MultiHeadAttention(nn.Module):
         # )  # (n*b) x d_k
 
         q = torch.stack([self.Q for _ in range(sz_b)], dim=1)
-        q = q.unsqueeze(-1).repeat((1, 1, 1, seq_len)).permute(2, 0, 3, 1).contiguous()
+        q = q.unsqueeze(-1).repeat((1, 1, 1, seq_len)).permute(1, 0, 3, 2).contiguous()
 
         k = self.fc1_k(v).view(sz_b, seq_len, n_head, d_k)
         # k = k.permute(2, 0, 1, 3).contiguous().view(-1, seq_len, d_k)  # (n*b) x lk x dk
