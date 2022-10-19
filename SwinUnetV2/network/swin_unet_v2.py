@@ -805,8 +805,7 @@ class SwinTransformerSys(nn.Module):
 
         if self.final_upsample == "expand_first":
             print("---final upsample expand_first---")
-            self.up = FinalUpConvLayer(input_resolution=(img_size // patch_size, img_size // patch_size),
-                                          dim_scale=4, dim=embed_dim)
+            self.up = FinalUpConvLayer(input_resolution=(img_size // patch_size, img_size // patch_size), dim=embed_dim)
             self.out_conv = nn.Sequential(
               Feature_aliasing(embed_dim),
               Feature_aliasing(embed_dim)
