@@ -822,7 +822,11 @@ class SwinTransformerSys(nn.Module):
             x, attn = layer(x, pad_mask=pad_mask, batch_positions=batch_positions)
             attns.append(attn)
         x = self.norm(x)  # B L C
-        print(len(attns))
+
+        for index, feature in x_downsample:
+            x_downsample[index] = self.temporal_aggregator(x_downsample[index],
+                                                           pad_mask=pad_mask, attn_mask=attns[index])
+
         return x, x_downsample
 
     # Dencoder and Skip connection
