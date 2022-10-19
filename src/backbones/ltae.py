@@ -117,8 +117,9 @@ class LTAE2d(nn.Module):
             # )  # BxTxHxW
 
             # bp = bp.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
-            bp = repeat(batch_positions, 'b t -> b t n', n=L)
-            bp = rearrange(bp, 'b t n -> (b n) t')
+
+            bp = batch_positions.unsqueeze(-1).repeat((1, 1, L))
+            bp = bp.permute(0, 2, 1).contiguous().view(B1 * L, T)
             out = out + self.positional_encoder(bp)
 
         out, attn = self.attention_heads(out, pad_mask=pad_mask)
@@ -126,8 +127,7 @@ class LTAE2d(nn.Module):
         out = (
             out.permute(1, 0, 2).contiguous().view(B1 * L, -1)
         )  # Concatenate heads
-        print(out.shape)
-        out = self.dropout(self.mlp(out))
+        out = self.dropout(self.proj(out))
         # out = self.out_norm(out) if self.out_norm is not None else out
         print(out.shape)
         # out = out.view(sz_b, h, w, -1).permute(0, 3, 1, 2)
