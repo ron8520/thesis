@@ -4,7 +4,7 @@ from math import sqrt
 import numpy as np
 import torch
 import torch.nn as nn
-from einops import repeat, rearrange
+from einops import repeat, rearrange, reduce
 
 from src.backbones.positional_encoding import PositionalEncoder
 
@@ -202,10 +202,8 @@ class MultiHeadAttention(nn.Module):
         output = attn @ v
         print(output.shape)
         attn = attn.view(n_head, sz_b, seq_len, seq_len)
-        attn = attn.squeeze(dim=2)
-
+        attn = reduce(attn, 'h b t1 t2 -> h b t1', 'mean')
         output = output.view(n_head, sz_b, seq_len, d_in // n_head)
-        output = output.squeeze(dim=2)
         print(output.shape)
         return output, attn
 
