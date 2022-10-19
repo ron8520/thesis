@@ -181,9 +181,10 @@ class MultiHeadAttention(nn.Module):
         k = k.permute(2, 0, 1, 3).contiguous().view(-1, seq_len, d_k)  # (n*b) x lk x dk
 
         if pad_mask is not None:
-            pad_mask = pad_mask.repeat(
-                (sz_b, n_head, 1)
-            )  # replicate pad_mask for each head (nxb) x lk
+            # pad_mask = pad_mask.repeat(
+            #     (sz_b, n_head, 1)
+            # )  # replicate pad_mask for each head (nxb) x lk
+            pad_mask = repeat(pad_mask, 'b t -> b h t', h=n_head)
         print(pad_mask.shape)
         v = torch.stack(v.split(v.shape[-1] // n_head, dim=-1)).view(
             n_head * sz_b, seq_len, -1
@@ -192,7 +193,7 @@ class MultiHeadAttention(nn.Module):
         q = q.unsqueeze(1) * self.scale
         attn = q @ k.transpose(-2, -1)
 
-        attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
+        attn = attn.masked_fill(pad_mask, -1e3)
         attn = self.softmax(attn)
         attn = self.dropout(attn)
 
