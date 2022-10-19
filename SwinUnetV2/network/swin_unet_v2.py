@@ -209,7 +209,7 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, temporal=False):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, temporal=False, return_att=False):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -228,6 +228,7 @@ class SwinTransformerBlock(nn.Module):
             dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
         self.temporal = temporal
+        self.return_att = return_att
         if self.temporal:
             self.temporal_att = LTAE2d(
                 in_channels=self.dim,
@@ -236,6 +237,7 @@ class SwinTransformerBlock(nn.Module):
                 d_model=self.dim,
                 d_k=self.dim // num_heads,
                 dropout=attn_drop,
+                return_att=self.return_att,
             )
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -275,7 +277,10 @@ class SwinTransformerBlock(nn.Module):
 
         if self.temporal:
             temporal_shortcut = x
-            xt = self.temporal_att(x, batch_positions=batch_positions, pad_mask=pad_mask)
+            if self.return_att:
+                xt, temporal_attn = self.temporal_att(x, batch_positions=batch_positions, pad_mask=pad_mask)
+            else:
+                xt = self.temporal_att(x, batch_positions=batch_positions, pad_mask=pad_mask)
             x = xt + temporal_shortcut
             # x = rearrange(x, '(b n) t c -> (b t) n c', b=B//T, t=T)
 
@@ -316,7 +321,10 @@ class SwinTransformerBlock(nn.Module):
         # Swin v2
         x = x + self.drop_path(self.norm2(self.mlp(x)))
 
-        return x
+        if self.return_att:
+            return x, temporal_attn
+        else:
+            return x
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
@@ -478,6 +486,7 @@ class BasicLayer(nn.Module):
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer,
                                  temporal=True,
+                                 return_att=True if i == (depth - 1) else False
                                  )
             for i in range(depth)])
 
@@ -490,12 +499,15 @@ class BasicLayer(nn.Module):
     def forward(self, x, pad_mask=None, batch_positions=None):
         for index, blk in enumerate(self.blocks):
             if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x, pad_mask, batch_positions)
+                if index == (self.depth - 1):
+                    x, temporal_attn = checkpoint.checkpoint(blk, x, pad_mask, batch_positions)
+                else:
+                    x = checkpoint.checkpoint(blk, x, pad_mask, batch_positions)
             else:
                 x = blk(x)
         if self.downsample is not None:
             x = self.downsample(x)
-        return x
+        return x, temporal_attn
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"
@@ -804,13 +816,13 @@ class SwinTransformerSys(nn.Module):
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
         x_downsample = []
-
+        attns = []
         for layer in self.layers:
             x_downsample.append(x)
-            x = layer(x, pad_mask=pad_mask, batch_positions=batch_positions)
-
+            x, attn = layer(x, pad_mask=pad_mask, batch_positions=batch_positions)
+            attns.append(attn)
         x = self.norm(x)  # B L C
-
+        print(len(attns))
         return x, x_downsample
 
     # Dencoder and Skip connection
