@@ -104,7 +104,7 @@ class LTAE2d(nn.Module):
             #     pad_mask.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
             # )
         out = rearrange(x, '(b t) n c -> (b n) t c', t=T, b=B1)
-        out = self.in_norm(out.permute(0, 2, 1)).permute(0, 2, 1)
+        out = self.in_norm(out)
 
         if self.inconv is not None:
             out = self.inconv(out.permute(0, 2, 1)).permute(0, 2, 1)
