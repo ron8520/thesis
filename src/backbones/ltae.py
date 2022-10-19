@@ -134,9 +134,8 @@ class LTAE2d(nn.Module):
         )  # Concatenate heads
         out = self.dropout(self.proj(out))
         # out = self.out_norm(out) if self.out_norm is not None else out
-        print(out.shape)
+
         out = out.view(B, L, C)
-        print(out.shape)
         # out = out.view(sz_b, h, w, -1).permute(0, 3, 1, 2)
 
         if self.return_att:
@@ -196,7 +195,8 @@ class MultiHeadAttention(nn.Module):
         attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
         attn = self.softmax(attn)
         attn = self.dropout(attn)
-
+        print(attn.shape)
+        print("------------------")
         output = attn @ v
         print(output.shape)
         attn = attn.view(n_head, sz_b, 1, seq_len)
