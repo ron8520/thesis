@@ -231,7 +231,7 @@ class SwinTransformerBlock(nn.Module):
         if self.temporal:
             self.temporal_att = LTAE2d(
                 in_channels=self.dim,
-                num_heads=num_heads,
+                n_head=num_heads,
                 mlp=[self.dim, self.dim],
                 d_k=self.dim // num_heads,
                 dropout=attn_drop,
