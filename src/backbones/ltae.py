@@ -125,13 +125,10 @@ class LTAE2d(nn.Module):
 
         out, attn = self.attention_heads(out, pad_mask=pad_mask)
 
-        print(attn.shape)
         attn = attn.view(self.n_head, SZ_B, int(sqrt(L)), int(sqrt(L)), T).permute(
             0, 1, 4, 2, 3
         )  # head x b x t x h x w
-        print(attn.shape)
-        print("--------------")
-        print(out.shape)
+
         out = (
             out.permute(1, 0, 2).contiguous().view(SZ_B * L, -1)
         )  # Concatenate heads
@@ -182,8 +179,7 @@ class MultiHeadAttention(nn.Module):
 
         k = self.fc1_k(v).view(sz_b, seq_len, n_head, d_k)
         k = k.permute(2, 0, 1, 3).contiguous().view(-1, seq_len, d_k)  # (n*b) x lk x dk
-        print(q.shape)
-        print(k.shape)
+
         if pad_mask is not None:
             pad_mask = pad_mask.repeat(
                 (n_head, 1)
