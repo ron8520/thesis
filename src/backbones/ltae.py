@@ -147,7 +147,7 @@ class MultiHeadAttention(nn.Module):
     Modified from github.com/jadore801120/attention-is-all-you-need-pytorch
     """
 
-    def __init__(self, n_head, d_k, d_in):
+    def __init__(self, n_head, d_k, d_in, proj_drop=0.1):
         super().__init__()
         self.n_head = n_head
         self.d_k = d_k
@@ -160,6 +160,9 @@ class MultiHeadAttention(nn.Module):
         nn.init.normal_(self.fc1_k.weight, mean=0, std=np.sqrt(2.0 / (d_k)))
 
         self.attention = ScaledDotProductAttention(temperature=np.power(d_k, 0.5))
+        self.scale = d_k ** -0.5
+        self.softmax = nn.Softmax(dim=-1)
+        self.dropout = nn.Dropout(proj_drop)
 
     def forward(self, v, pad_mask=None, return_comp=False):
         d_k, d_in, n_head = self.d_k, self.d_in, self.n_head
@@ -179,22 +182,28 @@ class MultiHeadAttention(nn.Module):
         v = torch.stack(v.split(v.shape[-1] // n_head, dim=-1)).view(
             n_head * sz_b, seq_len, -1
         )
-        if return_comp:
-            output, attn, comp = self.attention(
-                q, k, v, pad_mask=pad_mask, return_comp=return_comp
-            )
-        else:
-            output, attn = self.attention(
-                q, k, v, pad_mask=pad_mask, return_comp=return_comp
-            )
+
+        q = q.unsqueeze(1) * self.scale
+        attn = q @ k.transpose(-2, -1)
+        attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
+
+
+        # if return_comp:
+        #     output, attn, comp = self.attention(
+        #         q, k, v, pad_mask=pad_mask, return_comp=return_comp
+        #     )
+        # else:
+        #     output, attn = self.attention(
+        #         q, k, v, pad_mask=pad_mask, return_comp=return_comp
+        #     )
         attn = attn.view(n_head, sz_b, 1, seq_len)
         attn = attn.squeeze(dim=2)
 
-        output = output.view(n_head, sz_b, 1, d_in // n_head)
+        output = attn.view(n_head, sz_b, 1, d_in // n_head)
         output = output.squeeze(dim=2)
 
         if return_comp:
-            return output, attn, comp
+            return output, attn
         else:
             return output, attn
 
