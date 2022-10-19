@@ -182,8 +182,9 @@ class MultiHeadAttention(nn.Module):
 
         if pad_mask is not None:
             pad_mask = pad_mask.repeat(
-                (n_head, 1)
+                (sz_b, n_head, 1)
             )  # replicate pad_mask for each head (nxb) x lk
+        print(pad_mask.shape)
         v = torch.stack(v.split(v.shape[-1] // n_head, dim=-1)).view(
             n_head * sz_b, seq_len, -1
         )
@@ -197,7 +198,6 @@ class MultiHeadAttention(nn.Module):
 
         output = attn @ v
 
-        print("attention output shape")
         attn = attn.view(n_head, sz_b, 1, seq_len)
         attn = attn.squeeze(dim=2)
 
