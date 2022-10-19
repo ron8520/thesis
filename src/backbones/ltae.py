@@ -1,4 +1,5 @@
 import copy
+from math import sqrt
 
 import numpy as np
 import torch
@@ -87,7 +88,7 @@ class LTAE2d(nn.Module):
     def forward(self, x, batch_positions=None, pad_mask=None, return_comp=False):
         # sz_b, seq_len, d, h, w = x.shape
         B, L, C = x.shape
-        B1, T = batch_positions.shape
+        SZ_B, T = batch_positions.shape
         if pad_mask is not None:
             # pad_mask = (
             #     pad_mask.unsqueeze(-1)
@@ -97,12 +98,12 @@ class LTAE2d(nn.Module):
             # )  # BxTxHxW
 
             pad_mask = pad_mask.unsqueeze(-1).repeat((1, 1, L))
-            pad_mask = pad_mask.permute(0, 2, 1).contiguous().view(B1 * L, T)
+            pad_mask = pad_mask.permute(0, 2, 1).contiguous().view(SZ_B * L, T)
 
             # pad_mask = (
             #     pad_mask.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
             # )
-        out = rearrange(x, '(b t) n c -> (b n) t c', t=T, b=B1)
+        out = rearrange(x, '(b t) n c -> (b n) t c', t=T, b=SZ_B)
         out = self.in_norm(out)
 
         if self.inconv is not None:
@@ -119,23 +120,25 @@ class LTAE2d(nn.Module):
             # bp = bp.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
 
             bp = batch_positions.unsqueeze(-1).repeat((1, 1, L))
-            bp = bp.permute(0, 2, 1).contiguous().view(B1 * L, T)
+            bp = bp.permute(0, 2, 1).contiguous().view(SZ_B * L, T)
             out = out + self.positional_encoder(bp)
 
         out, attn = self.attention_heads(out, pad_mask=pad_mask)
 
         out = (
-            out.permute(1, 0, 2).contiguous().view(B1 * L, -1)
+            out.permute(1, 0, 2).contiguous().view(SZ_B * L, -1)
         )  # Concatenate heads
         out = self.dropout(self.proj(out))
         # out = self.out_norm(out) if self.out_norm is not None else out
+
+        out = out.view(B, L, C)
         print(out.shape)
         # out = out.view(sz_b, h, w, -1).permute(0, 3, 1, 2)
 
-        # attn = attn.view(self.n_head, sz_b, h, w, T).permute(
-        #     0, 1, 4, 2, 3
-        # )  # head x b x t x h x w
-
+        attn = attn.view(self.n_head, SZ_B, int(sqrt(L)), int(sqrt(L)), T).permute(
+            0, 1, 4, 2, 3
+        )  # head x b x t x h x w
+        print(attn.shape)
         if self.return_att:
             return out, attn
         else:
