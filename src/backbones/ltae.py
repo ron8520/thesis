@@ -124,7 +124,13 @@ class LTAE2d(nn.Module):
             out = out + self.positional_encoder(bp)
 
         out, attn = self.attention_heads(out, pad_mask=pad_mask)
+
         print(attn.shape)
+        attn = attn.view(self.n_head, SZ_B, int(sqrt(L)), int(sqrt(L)), T).permute(
+            0, 1, 4, 2, 3
+        )  # head x b x t x h x w
+        print(attn.shape)
+        print("--------------")
         print(out.shape)
         out = (
             out.permute(1, 0, 2).contiguous().view(SZ_B * L, -1)
@@ -136,10 +142,6 @@ class LTAE2d(nn.Module):
         print(out.shape)
         # out = out.view(sz_b, h, w, -1).permute(0, 3, 1, 2)
 
-        attn = attn.view(self.n_head, SZ_B, int(sqrt(L)), int(sqrt(L)), T).permute(
-            0, 1, 4, 2, 3
-        )  # head x b x t x h x w
-        print(attn.shape)
         if self.return_att:
             return out, attn
         else:
