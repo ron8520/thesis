@@ -267,18 +267,16 @@ class SwinTransformerBlock(nn.Module):
 
         self.register_buffer("attn_mask", attn_mask)
 
-    def forward(self, x, pad_mask=None, batch_position=None):
+    def forward(self, x, pad_mask=None, batch_positions=None):
         H, W = self.input_resolution
         B, L, C = x.shape
-        B1, T = batch_position.shape
         assert L == H * W, "input feature has wrong size"
 
         if self.temporal:
-            x = rearrange(x, '(b t) n c -> (b n) t c', b=B//T, t=T)
             temporal_shortcut = x
-            xt = self.temporal_att(x, x, x, attention_mask=pad_mask, N=L)
+            xt = self.temporal_att(x, batch_positions=batch_positions, attention_mask=pad_mask)
             x = xt + temporal_shortcut
-            x = rearrange(x, '(b n) t c -> (b t) n c', b=B//T, t=T)
+            # x = rearrange(x, '(b n) t c -> (b t) n c', b=B//T, t=T)
 
         shortcut = x
 

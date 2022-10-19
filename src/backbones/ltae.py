@@ -3,6 +3,7 @@ import copy
 import numpy as np
 import torch
 import torch.nn as nn
+from einops import repeat, rearrange
 
 from src.backbones.positional_encoding import PositionalEncoder
 
@@ -84,47 +85,56 @@ class LTAE2d(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, batch_positions=None, pad_mask=None, return_comp=False):
-        sz_b, seq_len, d, h, w = x.shape
+        # sz_b, seq_len, d, h, w = x.shape
+        B, L, C = x.shape
+        B1, T = batch_positions.shape
         if pad_mask is not None:
-            pad_mask = (
-                pad_mask.unsqueeze(-1)
-                .repeat((1, 1, h))
-                .unsqueeze(-1)
-                .repeat((1, 1, 1, w))
-            )  # BxTxHxW
-            pad_mask = (
-                pad_mask.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
-            )
+            # pad_mask = (
+            #     pad_mask.unsqueeze(-1)
+            #     .repeat((1, 1, h))
+            #     .unsqueeze(-1)
+            #     .repeat((1, 1, 1, w))
+            # )  # BxTxHxW
 
-        out = x.permute(0, 3, 4, 1, 2).contiguous().view(sz_b * h * w, seq_len, d)
+            pad_mask = repeat(batch_positions, 'b t -> b t n', n=L)
+            pad_mask = rearrange(pad_mask, 'b t n -> (b n) t')
+
+            # pad_mask =
+            # pad_mask = (
+            #     pad_mask.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
+            # )
+        out = rearrange(x, '(b t) n c -> (b n) t c', t=T, b=B1)
         out = self.in_norm(out.permute(0, 2, 1)).permute(0, 2, 1)
 
         if self.inconv is not None:
             out = self.inconv(out.permute(0, 2, 1)).permute(0, 2, 1)
 
         if self.positional_encoder is not None:
-            bp = (
-                batch_positions.unsqueeze(-1)
-                .repeat((1, 1, h))
-                .unsqueeze(-1)
-                .repeat((1, 1, 1, w))
-            )  # BxTxHxW
-            bp = bp.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
+            # bp = (
+            #     batch_positions.unsqueeze(-1)
+            #     .repeat((1, 1, h))
+            #     .unsqueeze(-1)
+            #     .repeat((1, 1, 1, w))
+            # )  # BxTxHxW
+
+            # bp = bp.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
+            bp = repeat(batch_positions, 'b t -> b t n', n=L)
+            bp = rearrange(bp, 'b t n -> (b n) t')
             out = out + self.positional_encoder(bp)
 
         out, attn = self.attention_heads(out, pad_mask=pad_mask)
 
         out = (
-            out.permute(1, 0, 2).contiguous().view(sz_b * h * w, -1)
+            out.permute(1, 0, 2).contiguous().view(B1 * L, -1)
         )  # Concatenate heads
         out = self.dropout(self.mlp(out))
         # out = self.out_norm(out) if self.out_norm is not None else out
         print(out.shape)
-        out = out.view(sz_b, h, w, -1).permute(0, 3, 1, 2)
+        # out = out.view(sz_b, h, w, -1).permute(0, 3, 1, 2)
 
-        attn = attn.view(self.n_head, sz_b, h, w, seq_len).permute(
-            0, 1, 4, 2, 3
-        )  # head x b x t x h x w
+        # attn = attn.view(self.n_head, sz_b, h, w, T).permute(
+        #     0, 1, 4, 2, 3
+        # )  # head x b x t x h x w
 
         if self.return_att:
             return out, attn
