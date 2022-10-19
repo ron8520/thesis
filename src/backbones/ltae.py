@@ -183,7 +183,8 @@ class MultiHeadAttention(nn.Module):
         k = self.fc1_k(v).view(sz_b, seq_len, n_head, d_k)
         # k = k.permute(2, 0, 1, 3).contiguous().view(-1, seq_len, d_k)  # (n*b) x lk x dk
         k = k.permute(0, 2, 1, 3).contiguous()
-
+        print(q.shape)
+        print(k.shape)
         if pad_mask is not None:
             # pad_mask = pad_mask.repeat(
             #     (sz_b, n_head, 1)
