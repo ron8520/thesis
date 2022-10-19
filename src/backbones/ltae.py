@@ -187,7 +187,7 @@ class MultiHeadAttention(nn.Module):
         attn = q @ k.transpose(-2, -1)
         print(attn.shape)
         print(pad_mask.shape)
-        attn = attn.masked_fill(pad_mask, -1e3)
+        attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
 
         attn = self.softmax(attn)
         attn = self.dropout(attn)
@@ -227,7 +227,7 @@ class ScaledDotProductAttention(nn.Module):
         attn = torch.matmul(q.unsqueeze(1), k.transpose(1, 2))
         attn = attn / self.temperature
         if pad_mask is not None:
-            attn = attn.masked_fill(pad_mask, -1e3)
+            attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
         if return_comp:
             comp = attn
         # compat = attn
