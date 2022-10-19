@@ -177,8 +177,12 @@ class MultiHeadAttention(nn.Module):
             -1, d_k
         )  # (n*b) x d_k
 
+        q = torch.stack([self.Q for _ in range(sz_b)], dim=1)
+        print(q.shape)
+
         k = self.fc1_k(v).view(sz_b, seq_len, n_head, d_k)
-        k = k.permute(2, 0, 1, 3).contiguous().view(-1, seq_len, d_k)  # (n*b) x lk x dk
+        # k = k.permute(2, 0, 1, 3).contiguous().view(-1, seq_len, d_k)  # (n*b) x lk x dk
+        k = k.permute(0, 2, 1, 3).contiguous()
 
         if pad_mask is not None:
             # pad_mask = pad_mask.repeat(
