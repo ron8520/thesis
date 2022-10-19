@@ -126,6 +126,7 @@ class LTAE2d(nn.Module):
         out = (
             out.permute(1, 0, 2).contiguous().view(B1 * L, -1)
         )  # Concatenate heads
+        print(out.shape)
         out = self.dropout(self.mlp(out))
         # out = self.out_norm(out) if self.out_norm is not None else out
         print(out.shape)
