@@ -824,10 +824,7 @@ class SwinTransformerSys(nn.Module):
             attns.append(attn)
         x = self.norm(x)  # B L C
 
-        for index, feature in enumerate(x_downsample):
-            x_downsample[index] = self.temporal_aggregator(x_downsample[index],
-                                                           pad_mask=pad_mask, attn_mask=attns[index])
-        return x, x_downsample
+        return x, x_downsample, attns
 
     # Dencoder and Skip connection
     def forward_up_features(self, x, x_downsample):
@@ -867,7 +864,7 @@ class SwinTransformerSys(nn.Module):
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
         #spatial encoder
-        x, x_downsample = self.forward_features(x, pad_mask=pad_mask, batch_positions=batch_positions)
+        x, x_downsample, attns = self.forward_features(x, pad_mask=pad_mask, batch_positions=batch_positions)
         
         x = rearrange(x, '(b t) (h w) c -> b t c h w',
           b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
@@ -882,14 +879,14 @@ class SwinTransformerSys(nn.Module):
         #   pad_mask=pad_mask
         # )
         #
-        # x = rearrange(x, 'b c h w -> b (h w) c')
+        x = rearrange(x, 'b c h w -> b (h w) c')
         #
         # # Reshape back to 5 dims
-        # for i, elements in enumerate(x_downsample):
-        #   x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
-        #     b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
-        #   x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
-        #   x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')
+        for i, elements in enumerate(x_downsample):
+          x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
+            b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
+          x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=attns[i])
+          x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')
 
         #decoder
         x = self.forward_up_features(x, x_downsample)
