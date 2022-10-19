@@ -457,6 +457,25 @@ class FinalPatchExpand_X4(nn.Module):
 
         return x
 
+class FinalUpConvLayer(nn.Module):
+    def __int__(self, input_resolution, dim, dim_scale=4, norm_layer=nn.LayerNorm):
+        super().__int__()
+        self.expand = nn.Linear(dim, 16 * dim, bias=False) if dim_scale == 2 else nn.Identity()
+        self.up = nn.ConvTranspose2d(16 * dim, dim // dim_scale, kernel_size=4, stride=4, padding=1)
+        self.norm = norm_layer(dim // dim_scale)
+        self.input_resolution = input_resolution
+
+    def forward(self, x):
+        x = self.expand(x)
+        H, W = self.input_resolution
+        B, L, C = x.shape
+
+        x = x.view(B, H, W, C)
+        x = rearrange(x, 'b h w c -> b c h w')
+        x = self.up(x)
+        x = rearrange(x, 'b c h w -> b (h w) c')
+        x = self.norm(x)
+        return x
 
 class BasicLayer(nn.Module):
     """ A basic Swin Transformer layer for one stage.
