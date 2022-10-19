@@ -165,7 +165,6 @@ class MultiHeadAttention(nn.Module):
         self.fc1_k = nn.Linear(d_in, n_head * d_k)
         nn.init.normal_(self.fc1_k.weight, mean=0, std=np.sqrt(2.0 / (d_k)))
 
-        self.attention = ScaledDotProductAttention(temperature=np.power(d_k, 0.5))
         self.scale = d_k ** -0.5
         self.softmax = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(proj_drop)
@@ -198,6 +197,7 @@ class MultiHeadAttention(nn.Module):
 
         output = attn @ v
 
+        print("attention output shape")
         attn = attn.view(n_head, sz_b, 1, seq_len)
         attn = attn.squeeze(dim=2)
 
