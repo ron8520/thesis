@@ -185,8 +185,10 @@ class MultiHeadAttention(nn.Module):
 
         q = q.unsqueeze(1) * self.scale
         attn = q @ k.transpose(-2, -1)
-        attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
+        attn = attn.masked_fill(pad_mask, -1e3)
 
+        attn = self.softmax(attn)
+        attn = self.dropout(attn)
 
         # if return_comp:
         #     output, attn, comp = self.attention(
@@ -225,7 +227,7 @@ class ScaledDotProductAttention(nn.Module):
         if pad_mask is not None:
             print(pad_mask.unsqueeze(1).shape)
             print(attn.shape)
-            attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
+            attn = attn.masked_fill(pad_mask, -1e3)
         if return_comp:
             comp = attn
         # compat = attn
