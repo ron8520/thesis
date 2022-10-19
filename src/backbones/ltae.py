@@ -124,7 +124,7 @@ class LTAE2d(nn.Module):
             out = out + self.positional_encoder(bp)
 
         out, attn = self.attention_heads(out, pad_mask=pad_mask)
-
+        print(attn.shape)
         print(out.shape)
         out = (
             out.permute(1, 0, 2).contiguous().view(SZ_B * L, -1)
