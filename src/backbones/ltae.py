@@ -214,7 +214,7 @@ class ScaledDotProductAttention(nn.Module):
         attn = torch.matmul(q.unsqueeze(1), k.transpose(1, 2))
         attn = attn / self.temperature
         if pad_mask is not None:
-            print(pad_mask)
+            print(pad_mask.shape)
             attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
         if return_comp:
             comp = attn
