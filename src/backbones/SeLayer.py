@@ -1,13 +1,13 @@
 import torch.nn as nn
 import torch
 class SELayer(nn.Module):
-    def __init__(self, channel, reduction=16):
+    def __init__(self, channel, expansion=0.25):
         super(SELayer, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Sequential(
-            nn.Linear(channel, channel // reduction, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(channel // reduction, channel, bias=False),
+            nn.Linear(channel, int(expansion * channel), bias=False),
+            nn.GELU(),
+            nn.Linear(int(expansion * channel), channel, bias=False),
             nn.Sigmoid()
         )
     def forward(self, x):
