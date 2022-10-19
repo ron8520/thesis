@@ -274,7 +274,7 @@ class SwinTransformerBlock(nn.Module):
 
         if self.temporal:
             temporal_shortcut = x
-            xt = self.temporal_att(x, batch_positions=batch_positions, attention_mask=pad_mask)
+            xt = self.temporal_att(x, batch_positions=batch_positions, pad_mask=pad_mask)
             x = xt + temporal_shortcut
             # x = rearrange(x, '(b n) t c -> (b t) n c', b=B//T, t=T)
 
