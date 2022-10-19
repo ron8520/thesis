@@ -177,10 +177,12 @@ class MultiHeadAttention(nn.Module):
         print(q.shape)
         print(k.shape)
         print("--------")
+        print(pad_mask.shape)
         if pad_mask is not None:
             pad_mask = pad_mask.repeat(
                 (n_head, 1)
             )  # replicate pad_mask for each head (nxb) x lk
+        print(pad_mask.shape)
         v = torch.stack(v.split(v.shape[-1] // n_head, dim=-1)).view(
             n_head * sz_b, seq_len, -1
         )
