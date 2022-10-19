@@ -96,10 +96,9 @@ class LTAE2d(nn.Module):
             #     .repeat((1, 1, 1, w))
             # )  # BxTxHxW
 
-            pad_mask = repeat(batch_positions, 'b t -> b t n', n=L)
-            pad_mask = rearrange(pad_mask, 'b t n -> (b n) t')
+            pad_mask = pad_mask.unsqueeze(-1).repeat((1, 1, L))
+            pad_mask = pad_mask.permute(0, 2, 1).contiguous().view(B1 * L, T)
 
-            # pad_mask =
             # pad_mask = (
             #     pad_mask.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
             # )
@@ -186,7 +185,7 @@ class MultiHeadAttention(nn.Module):
         q = q.unsqueeze(1) * self.scale
         attn = q @ k.transpose(1, 2)
 
-        attn = attn.masked_fill(attn != pad_mask.unsqueeze(1), -1e3)
+        attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
         print(attn.shape)
         print(attn)
         attn = self.softmax(attn)
