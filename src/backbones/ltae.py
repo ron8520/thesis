@@ -176,7 +176,6 @@ class MultiHeadAttention(nn.Module):
             pad_mask = pad_mask.repeat(
                 (n_head, 1)
             )  # replicate pad_mask for each head (nxb) x lk
-        print(pad_mask.shape)
         v = torch.stack(v.split(v.shape[-1] // n_head, dim=-1)).view(
             n_head * sz_b, seq_len, -1
         )
@@ -215,6 +214,7 @@ class ScaledDotProductAttention(nn.Module):
         attn = torch.matmul(q.unsqueeze(1), k.transpose(1, 2))
         attn = attn / self.temperature
         if pad_mask is not None:
+            print(pad_mask)
             attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
         if return_comp:
             comp = attn
