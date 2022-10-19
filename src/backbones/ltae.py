@@ -173,12 +173,12 @@ class MultiHeadAttention(nn.Module):
         d_k, d_in, n_head = self.d_k, self.d_in, self.n_head
         sz_b, seq_len, _ = v.size()
 
-        q = torch.stack([self.Q for _ in range(sz_b)], dim=1).view(
-            -1, d_k
-        )  # (n*b) x d_k
+        # q = torch.stack([self.Q for _ in range(sz_b)], dim=1).view(
+        #     -1, d_k
+        # )  # (n*b) x d_k
 
         q = torch.stack([self.Q for _ in range(sz_b)], dim=1)
-        print(q.shape)
+        q = q.unsqueeze(-1).repeat(seq_len).permute(2, 0, 3, 1).contiguous()
 
         k = self.fc1_k(v).view(sz_b, seq_len, n_head, d_k)
         # k = k.permute(2, 0, 1, 3).contiguous().view(-1, seq_len, d_k)  # (n*b) x lk x dk
