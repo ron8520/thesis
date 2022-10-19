@@ -189,7 +189,7 @@ class MultiHeadAttention(nn.Module):
             n_head * sz_b, seq_len, -1
         )
 
-        q = q.unsqueeze(1).repat((1, seq_len, 1)) * self.scale
+        q = q.unsqueeze(1).repeat((1, seq_len, 1)) * self.scale
         attn = q @ k.transpose(-2, -1)
         print(q.shape)
         print(k.shape)
