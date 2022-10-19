@@ -460,9 +460,9 @@ class FinalPatchExpand_X4(nn.Module):
 class FinalUpConvLayer(nn.Module):
     def __int__(self, input_resolution, dim, dim_scale=4, norm_layer=nn.LayerNorm):
         super().__int__()
-        self.expand = nn.Linear(dim, 16 * dim, bias=False) if dim_scale == 2 else nn.Identity()
-        self.up = nn.ConvTranspose2d(16 * dim, dim // dim_scale, kernel_size=4, stride=4, padding=1)
-        self.norm = norm_layer(dim // dim_scale)
+        self.expand = nn.Linear(dim, 16 * dim, bias=False)
+        self.up = nn.ConvTranspose2d(16 * dim, dim // dim_scale ** 2, kernel_size=4, stride=4, padding=1)
+        self.norm = norm_layer(dim)
         self.input_resolution = input_resolution
 
     def forward(self, x):
@@ -805,7 +805,7 @@ class SwinTransformerSys(nn.Module):
 
         if self.final_upsample == "expand_first":
             print("---final upsample expand_first---")
-            self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
+            self.up = FinalUpConvLayer(input_resolution=(img_size // patch_size, img_size // patch_size),
                                           dim_scale=4, dim=embed_dim)
             self.out_conv = nn.Sequential(
               Feature_aliasing(embed_dim),
