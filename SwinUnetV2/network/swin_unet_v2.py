@@ -817,16 +817,16 @@ class SwinTransformerSys(nn.Module):
         x = self.pos_drop(x)
         x_downsample = []
         attns = []
+
         for layer in self.layers:
             x_downsample.append(x)
             x, attn = layer(x, pad_mask=pad_mask, batch_positions=batch_positions)
             attns.append(attn)
         x = self.norm(x)  # B L C
 
-        for index, feature in x_downsample:
+        for index, feature in enumerate(x_downsample):
             x_downsample[index] = self.temporal_aggregator(x_downsample[index],
                                                            pad_mask=pad_mask, attn_mask=attns[index])
-
         return x, x_downsample
 
     # Dencoder and Skip connection
@@ -869,8 +869,12 @@ class SwinTransformerSys(nn.Module):
         #spatial encoder
         x, x_downsample = self.forward_features(x, pad_mask=pad_mask, batch_positions=batch_positions)
         
-        # x = rearrange(x, '(b t) (h w) c -> b t c h w',
-        #   b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
+        x = rearrange(x, '(b t) (h w) c -> b t c h w',
+          b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
+
+        x_mean = reduce(x, 'b t c h w -> b c h w', 'mean')
+        x_max = reduce(x,  'b t c h w -> b c h w', 'max')
+        x = x_mean + x_max
         #
         # x, att = self.temporal_encoder(
         #   x,
