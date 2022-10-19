@@ -215,6 +215,7 @@ class ScaledDotProductAttention(nn.Module):
         attn = attn / self.temperature
         if pad_mask is not None:
             print(pad_mask.unsqueeze(1).shape)
+            print(attn.shape)
             attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
         if return_comp:
             comp = attn
