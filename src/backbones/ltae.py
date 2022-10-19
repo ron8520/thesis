@@ -182,11 +182,10 @@ class MultiHeadAttention(nn.Module):
         v = torch.stack(v.split(v.shape[-1] // n_head, dim=-1)).view(
             n_head * sz_b, seq_len, -1
         )
-
+        print(q.shape)
         q = q.unsqueeze(1) * self.scale
         attn = q @ k.transpose(-2, -1)
-        print(attn.shape)
-        print(pad_mask.shape)
+
         attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
 
         attn = self.softmax(attn)
