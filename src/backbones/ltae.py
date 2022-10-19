@@ -186,8 +186,9 @@ class MultiHeadAttention(nn.Module):
         q = q.unsqueeze(1) * self.scale
         attn = q @ k.transpose(1, 2)
 
-        attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
-
+        attn = attn.masked_fill(attn != pad_mask.unsqueeze(1), -1e3)
+        print(attn.shape)
+        print(attn)
         attn = self.softmax(attn)
         attn = self.dropout(attn)
 
