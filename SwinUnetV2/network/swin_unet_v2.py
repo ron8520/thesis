@@ -233,6 +233,7 @@ class SwinTransformerBlock(nn.Module):
                 in_channels=self.dim,
                 n_head=num_heads,
                 mlp=[self.dim, self.dim],
+                d_model=self.dim,
                 d_k=self.dim // num_heads,
                 dropout=attn_drop,
             )
