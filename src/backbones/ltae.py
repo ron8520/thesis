@@ -201,7 +201,7 @@ class MultiHeadAttention(nn.Module):
         print("------------------")
         output = attn @ v
         print(output.shape)
-        attn = attn.view(n_head, sz_b, 1, seq_len)
+        attn = attn.view(n_head, sz_b, seq_len, seq_len)
         attn = attn.squeeze(dim=2)
 
         output = output.view(n_head, sz_b, 1, d_in // n_head)
