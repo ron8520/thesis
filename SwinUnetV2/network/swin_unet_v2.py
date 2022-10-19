@@ -229,9 +229,12 @@ class SwinTransformerBlock(nn.Module):
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
         self.temporal = temporal
         if self.temporal:
-            self.temporal_att = SimplifiedScaledDotProductAttention(
-                d_model=dim,
-                num_heads=num_heads
+            self.temporal_att = LTAE2d(
+                in_channels=self.dim,
+                num_heads=num_heads,
+                mlp=[self.dim, self.dim],
+                d_k=self.dim // num_heads,
+                dropout=attn_drop,
             )
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -264,9 +267,10 @@ class SwinTransformerBlock(nn.Module):
 
         self.register_buffer("attn_mask", attn_mask)
 
-    def forward(self, x, T=None, pad_mask=None):
+    def forward(self, x, pad_mask=None, batch_position=None):
         H, W = self.input_resolution
         B, L, C = x.shape
+        B1, T = batch_position.shape
         assert L == H * W, "input feature has wrong size"
 
         if self.temporal:
@@ -484,10 +488,10 @@ class BasicLayer(nn.Module):
         else:
             self.downsample = None
 
-    def forward(self, x, T=None, pad_mask=None):
+    def forward(self, x, pad_mask=None, batch_positions=None):
         for index, blk in enumerate(self.blocks):
             if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x, T, pad_mask)
+                x = checkpoint.checkpoint(blk, x, pad_mask, batch_positions)
             else:
                 x = blk(x)
         if self.downsample is not None:
@@ -730,14 +734,14 @@ class SwinTransformerSys(nn.Module):
         self.norm_up = norm_layer(self.embed_dim)
 
         ## temporal attention
-        self.temporal_encoder = LTAE2d(
-            in_channels=768,
-            d_model=256,
-            n_head=16,
-            mlp=[256, 768],
-            return_att=True,
-            d_k=8,
-        )
+        # self.temporal_encoder = LTAE2d(
+        #     in_channels=768,
+        #     d_model=256,
+        #     n_head=16,
+        #     mlp=[256, 768],
+        #     return_att=True,
+        #     d_k=8,
+        # )
 
         self.temporal_aggregator = Temporal_Aggregator(mode="att_group")
         self.pad_value = 0
@@ -795,7 +799,7 @@ class SwinTransformerSys(nn.Module):
 
 
     # Encoder and Bottleneck
-    def forward_features(self, x, T=None, pad_mask=None):
+    def forward_features(self, x, pad_mask=None, batch_positions=None):
         x = self.patch_embed(x)
         if self.ape:
             x = x + self.absolute_pos_embed
@@ -804,7 +808,7 @@ class SwinTransformerSys(nn.Module):
 
         for layer in self.layers:
             x_downsample.append(x)
-            x = layer(x, T=T, pad_mask=pad_mask)
+            x = layer(x, pad_mask=pad_mask, batch_positions=batch_positions)
 
         x = self.norm(x)  # B L C
 
@@ -842,31 +846,32 @@ class SwinTransformerSys(nn.Module):
         pad_mask = (
           (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
         )  # BxT pad mask
-        
+        print("pad_mask shape ")
+        print(pad_mask.shape)
         B, T, C, H, W = x.shape
         x = self.in_conv.smart_forward(x)
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
         #spatial encoder
-        x, x_downsample = self.forward_features(x, T=T, pad_mask=pad_mask)
+        x, x_downsample = self.forward_features(x, pad_mask=pad_mask, batch_positions=batch_positions)
         
-        x = rearrange(x, '(b t) (h w) c -> b t c h w', 
-          b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
-        
-        x, att = self.temporal_encoder(
-          x,
-          batch_positions=batch_positions, 
-          pad_mask=pad_mask
-        )
-
-        x = rearrange(x, 'b c h w -> b (h w) c')
-
-        # Reshape back to 5 dims 
-        for i, elements in enumerate(x_downsample):
-          x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
-            b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])   
-          x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
-          x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')      
+        # x = rearrange(x, '(b t) (h w) c -> b t c h w',
+        #   b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
+        #
+        # x, att = self.temporal_encoder(
+        #   x,
+        #   batch_positions=batch_positions,
+        #   pad_mask=pad_mask
+        # )
+        #
+        # x = rearrange(x, 'b c h w -> b (h w) c')
+        #
+        # # Reshape back to 5 dims
+        # for i, elements in enumerate(x_downsample):
+        #   x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
+        #     b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
+        #   x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
+        #   x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')
 
         #decoder
         x = self.forward_up_features(x, x_downsample)

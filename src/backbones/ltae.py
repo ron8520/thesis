@@ -48,7 +48,6 @@ class LTAE2d(nn.Module):
         else:
             self.d_model = in_channels
             self.inconv = None
-        assert self.mlp[0] == self.d_model
 
         if positional_encoding:
             self.positional_encoder = PositionalEncoder(
@@ -60,26 +59,28 @@ class LTAE2d(nn.Module):
         self.attention_heads = MultiHeadAttention(
             n_head=n_head, d_k=d_k, d_in=self.d_model
         )
-        self.in_norm = nn.GroupNorm(
-            num_groups=n_head,
-            num_channels=self.in_channels,
-        )
-        self.out_norm = nn.GroupNorm(
-            num_groups=n_head,
-            num_channels=mlp[-1],
-        )
+        # self.in_norm = nn.GroupNorm(
+        #     num_groups=n_head,
+        #     num_channels=self.in_channels,
+        # )
+        self.in_norm = nn.LayerNorm(self.in_channels)
+        # self.out_norm = None
+        # self.out_norm = nn.GroupNorm(
+        #     num_groups=n_head,
+        #     num_channels=mlp[-1],
+        # )
 
-        layers = []
-        for i in range(len(self.mlp) - 1):
-            layers.extend(
-                [
-                    nn.Linear(self.mlp[i], self.mlp[i + 1]),
-                    nn.BatchNorm1d(self.mlp[i + 1]),
-                    nn.ReLU(),
-                ]
-            )
+        # layers = []
+        # for i in range(len(self.mlp) - 1):
+        #     layers.extend(
+        #         [
+        #             nn.Linear(self.mlp[i], self.mlp[i + 1]),
+        #             nn.LayerNorm(self.mlp[i + 1]),
+        #             nn.GELU(),
+        #         ]
+        #     )
 
-        self.mlp = nn.Sequential(*layers)
+        self.proj = nn.Linear(self.mlp[0], self.mlp[1])
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, batch_positions=None, pad_mask=None, return_comp=False):
@@ -117,7 +118,8 @@ class LTAE2d(nn.Module):
             out.permute(1, 0, 2).contiguous().view(sz_b * h * w, -1)
         )  # Concatenate heads
         out = self.dropout(self.mlp(out))
-        out = self.out_norm(out) if self.out_norm is not None else out
+        # out = self.out_norm(out) if self.out_norm is not None else out
+        print(out.shape)
         out = out.view(sz_b, h, w, -1).permute(0, 3, 1, 2)
 
         attn = attn.view(self.n_head, sz_b, h, w, seq_len).permute(
