@@ -130,8 +130,9 @@ class LTAE2d(nn.Module):
         )  # head x b x t x h x w
 
         out = (
-            out.permute(1, 0, 2).contiguous().view(SZ_B * L, -1)
+            out.permute(1, 2, 0, 3).contiguous().view(SZ_B * L, T, -1)
         )  # Concatenate heads
+        print(out.shape)
         out = self.dropout(self.proj(out))
         # out = self.out_norm(out) if self.out_norm is not None else out
 
@@ -173,9 +174,6 @@ class MultiHeadAttention(nn.Module):
             -1, d_k
         )  # (n*b) x d_k
 
-        # q = torch.stack([self.Q for _ in range(sz_b)], dim=1)
-        # q = q.unsqueeze(-1).repeat((1, 1, 1, seq_len)).permute(1, 0, 3, 2).contiguous()
-
         k = self.fc1_k(v).view(sz_b, seq_len, n_head, d_k)
         k = k.permute(2, 0, 1, 3).contiguous().view(-1, seq_len, d_k)  # (n*b) x lk x dk
 
@@ -191,20 +189,18 @@ class MultiHeadAttention(nn.Module):
 
         q = q.unsqueeze(1).repeat((1, seq_len, 1)) * self.scale
         attn = q @ k.transpose(-2, -1)
-        print(q.shape)
-        print(k.shape)
+
         attn = attn.masked_fill(pad_mask.unsqueeze(1).repeat((1, seq_len, 1)), -1e3)
         attn = self.softmax(attn)
         attn = self.dropout(attn)
-        print(attn.shape)
-        print(v.shape)
-        print("------------------")
+
         output = attn @ v
-        print(output.shape)
+
         attn = attn.view(n_head, sz_b, seq_len, seq_len)
         attn = reduce(attn, 'h b t1 t2 -> h b t1', 'mean')
+
         output = output.view(n_head, sz_b, seq_len, d_in // n_head)
-        print(output.shape)
+
         return output, attn
 
 
