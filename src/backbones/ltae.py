@@ -120,6 +120,8 @@ class LTAE2d(nn.Module):
             # bp = bp.permute(0, 2, 3, 1).contiguous().view(sz_b * h * w, seq_len)
             bp = repeat(batch_positions, 'b t -> b t n', n=L)
             bp = rearrange(bp, 'b t n -> (b n) t')
+            print(out.shape)
+            print(bp.shape)
             out = out + self.positional_encoder(bp)
 
         out, attn = self.attention_heads(out, pad_mask=pad_mask)
