@@ -125,12 +125,13 @@ class LTAE2d(nn.Module):
 
         out, attn = self.attention_heads(out, pad_mask=pad_mask)
 
+        print(out.shape)
         out = (
             out.permute(1, 0, 2).contiguous().view(SZ_B * L, -1)
         )  # Concatenate heads
         out = self.dropout(self.proj(out))
         # out = self.out_norm(out) if self.out_norm is not None else out
-
+        print(out.shape)
         out = out.view(B, L, C)
         print(out.shape)
         # out = out.view(sz_b, h, w, -1).permute(0, 3, 1, 2)
