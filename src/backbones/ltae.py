@@ -196,6 +196,7 @@ class MultiHeadAttention(nn.Module):
         attn = self.softmax(attn)
         attn = self.dropout(attn)
         print(attn.shape)
+        print(v.shape)
         print("------------------")
         output = attn @ v
         print(output.shape)
