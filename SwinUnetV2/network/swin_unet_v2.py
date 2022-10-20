@@ -480,8 +480,6 @@ class FinalUpConvLayer(nn.Module):
         x = self.up_1(x)
         x = self.conv_1(x)
         x = self.up_2(x)
-        print("upsampling x4")
-        print(x.shape)
         x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.norm(x)
 
