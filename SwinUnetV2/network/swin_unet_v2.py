@@ -794,7 +794,7 @@ class SwinTransformerSys(nn.Module):
               Feature_reduce(embed_dim, embed_dim // 2),
               Feature_aliasing(embed_dim // 2)
             )
-            self.output = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=3, bias=False)
+            self.output = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=1, bias=False)
 
 
         self.apply(self._init_weights)
