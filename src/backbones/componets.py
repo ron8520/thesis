@@ -38,6 +38,8 @@ class CBlock(TemporallySharedBlock):
         self.mlp = CMlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x):
+        print(x.shape)
+        print("---------")
         x = x + self.pos_embed(x)
         x = x + self.drop_path(self.conv2(self.attn(self.conv1(self.norm1(x)))))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
