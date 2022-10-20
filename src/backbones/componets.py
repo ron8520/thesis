@@ -30,7 +30,7 @@ class CBlock(TemporallySharedBlock):
         self.norm1 = nn.BatchNorm2d(dim)
         self.conv1 = nn.Conv2d(dim, dim, 1)
         self.conv2 = nn.Conv2d(dim, dim, 1)
-        self.attn = nn.Conv2d(dim, dim, 5, padding=2, groups=dim)
+        self.attn = nn.Conv2d(dim, dim, 4, padding=1, groups=dim)
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = nn.BatchNorm2d(dim)
