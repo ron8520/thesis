@@ -1,5 +1,5 @@
 import torch.nn as nn
-from timm.models import DropPath
+from timm.models.layers import DropPath
 
 from src.backbones.utae import TemporallySharedBlock
 
