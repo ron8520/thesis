@@ -1,6 +1,7 @@
 import torch.nn as nn
 from timm.models.layers import DropPath
 
+from src.backbones.SeLayer import SELayer
 from src.backbones.utae import TemporallySharedBlock
 
 class CMlp(nn.Module):
@@ -34,12 +35,14 @@ class CBlock(TemporallySharedBlock):
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = nn.BatchNorm2d(dim)
+        self.se = SELayer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = CMlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x):
         x = x + self.pos_embed(x)
         x = x + self.drop_path(self.conv2(self.attn(self.conv1(self.norm1(x)))))
+        x = self.se(x)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
