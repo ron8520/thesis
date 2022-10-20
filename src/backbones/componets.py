@@ -30,7 +30,7 @@ class CBlock(TemporallySharedBlock):
         self.norm1 = nn.BatchNorm2d(dim)
         self.conv1 = nn.Conv2d(dim, dim, 1)
         self.conv2 = nn.Conv2d(dim, dim, 1)
-        self.attn = nn.Conv2d(dim, dim, 4, padding=1, groups=dim)
+        self.attn = nn.Conv2d(dim, dim, 5, padding=2, groups=dim)
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = nn.BatchNorm2d(dim)
@@ -38,8 +38,6 @@ class CBlock(TemporallySharedBlock):
         self.mlp = CMlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x):
-        print(x.shape)
-        print("---------")
         x = x + self.pos_embed(x)
         x = x + self.drop_path(self.conv2(self.attn(self.conv1(self.norm1(x)))))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
