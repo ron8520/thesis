@@ -473,7 +473,6 @@ class FinalUpConvLayer(nn.Module):
         x = self.expand(x)
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
-        print(x.shape)
         x = x.view(B, H, W, C)
         x = rearrange(x, 'b h w c -> b c h w')
         x = self.up(x)
@@ -844,13 +843,6 @@ class SwinTransformerSys(nn.Module):
             except AttributeError:
                 pass
 
-    # @torch.jit.ignore
-    # def no_weight_decay(self):
-    #     return {'absolute_pos_embed'}
-    #
-    # @torch.jit.ignore
-    # def no_weight_decay_keywords(self):
-    #     return {'relative_position_bias_table'}
 
     # Encoder and Bottleneck
     def forward_features(self, x, T=None):
@@ -889,9 +881,8 @@ class SwinTransformerSys(nn.Module):
 
         if self.final_upsample == "expand_first":
             x = self.up(x)
-            print("up_x4")
-            print(x.shape)
-            x = x.view(B, 4 * H, 4 * W, -1)
+
+            x = x.view(B, 4 * H, 4 * W, C)
             x = x.permute(0, 3, 1, 2)  # B,C,H,W
             x = self.out_conv(x) # for output not like block
             x = self.output(x)
