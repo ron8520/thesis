@@ -450,6 +450,7 @@ class BasicLayer(nn.Module):
         self.input_resolution = input_resolution
         self.depth = depth
         self.use_checkpoint = use_checkpoint
+        self.cnn = cnn
 
         # build blocks
         self.blocks = nn.ModuleList([
@@ -462,7 +463,7 @@ class BasicLayer(nn.Module):
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer
                                  )
-            if not cnn else
+            if not self.cnn else
             CBlock(
                 dim=dim, input_resolution=input_resolution,
                 pad_value=0, drop=drop, mlp_ratio=mlp_ratio,
