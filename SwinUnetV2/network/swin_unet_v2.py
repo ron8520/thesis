@@ -457,6 +457,31 @@ class FinalPatchExpand_X4(nn.Module):
 
         return x
 
+class FinalUpConvLayer(nn.Module):
+    def __init__(self, input_resolution, dim, dim_scale=4, norm_layer=nn.LayerNorm):
+        super().__init__()
+        self.input_resolution = input_resolution
+        self.dim = dim
+        self.dim_scale = dim_scale
+        self.expand = nn.Linear(dim, 16 * dim, bias=False)
+        self.up = nn.ConvTranspose2d(16 * dim, dim, kernel_size=4, stride=4, padding=1)
+        self.output_dim = dim
+        self.norm = norm_layer(self.output_dim)
+
+    def forward(self, x):
+        H, W = self.input_resolution
+        x = self.expand(x)
+        B, L, C = x.shape
+        assert L == H * W, "input feature has wrong size"
+        print(x.shape)
+        x = x.view(B, H, W, C)
+        x = rearrange(x, 'b h w c -> b c h w')
+        x = self.up(x)
+        x = rearrange(x, 'b (h w) c')
+        x = self.norm(x)
+
+        return x
+
 
 class BasicLayer(nn.Module):
     """ A basic Swin Transformer layer for one stage.
@@ -761,10 +786,10 @@ class SwinTransformerSys(nn.Module):
             d_model=256,
             # d_model=1536,
             n_head=16,
-            mlp=[256, 768],
+            mlp=[768, 768],
             # mlp=[1536, 768],
             return_att=True,
-            d_k=8,
+            d_k=768 // 16,
         )
 
         self.temporal_aggregator = Temporal_Aggregator(mode="att_group")
@@ -786,7 +811,7 @@ class SwinTransformerSys(nn.Module):
 
         if self.final_upsample == "expand_first":
             print("---final upsample expand_first---")
-            self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
+            self.up = FinalUpConvLayer(input_resolution=(img_size // patch_size, img_size // patch_size),
                                           dim_scale=4, dim=embed_dim)
             self.out_conv = nn.Sequential(
               # Feature_aliasing(embed_dim),
