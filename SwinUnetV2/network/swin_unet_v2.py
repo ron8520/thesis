@@ -464,7 +464,9 @@ class FinalUpConvLayer(nn.Module):
         self.dim = dim
         self.dim_scale = dim_scale
         self.expand = nn.Linear(dim, 16 * dim, bias=False)
-        self.up = nn.ConvTranspose2d(16 * dim, dim, kernel_size=4, stride=4, padding=1)
+        self.up_1 = nn.ConvTranspose2d(16 * dim, dim * 8, kernel_size=4, stride=2, padding=1)
+        self.conv_1 = Feature_aliasing(dim * 8)
+        self.up_2 = nn.ConvTranspose2d(8 * dim, dim, kernel_size=4, stride=2, padding=1)
         self.output_dim = dim
         self.norm = norm_layer(self.output_dim)
 
@@ -475,7 +477,9 @@ class FinalUpConvLayer(nn.Module):
         assert L == H * W, "input feature has wrong size"
         x = x.view(B, H, W, C)
         x = rearrange(x, 'b h w c -> b c h w')
-        x = self.up(x)
+        x = self.up_1(x)
+        x = self.conv_1(x)
+        x = self.up_2(x)
         print("upsampling x4")
         print(x.shape)
         x = rearrange(x, 'b c h w -> b (h w) c')
