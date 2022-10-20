@@ -22,7 +22,7 @@ class CMlp(nn.Module):
         return x
 
 class CBlock(TemporallySharedBlock):
-    def __init__(self, dim, input_resolution, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
+    def __init__(self, dim, input_resolution, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, pad_value=None):
         super().__init__(pad_value=pad_value)
         self.input_resolution = input_resolution
