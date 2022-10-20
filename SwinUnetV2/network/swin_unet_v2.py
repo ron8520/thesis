@@ -466,7 +466,7 @@ class BasicLayer(nn.Module):
             CBlock(
                 dim=dim, input_resolution=input_resolution,
                 pad_value=0, drop=drop, mlp_ratio=mlp_ratio,
-                drop_path=drop_path
+                drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path
             )
             for i in range(depth)])
 
