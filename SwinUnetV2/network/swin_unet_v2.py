@@ -481,7 +481,11 @@ class BasicLayer(nn.Module):
         for index, blk in enumerate(self.blocks):
             if self.use_checkpoint:
                 if self.cnn:
+                    B, N, C = x.shape
+                    x = rearrange(x, '(b t) (h w) c -> b t c h w', b=B // T, t=T,
+                                  h=self.input_resolution[0], w=self.input_resolution[0])
                     x = checkpoint.checkpoint(blk.smart_forward, x)
+                    x = rearrange(x, 'b t c h w -> (b t) (h w) c')
                 else:
                     x = checkpoint.checkpoint(blk, x)
             else:
