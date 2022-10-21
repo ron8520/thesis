@@ -31,7 +31,7 @@ class SwinUnet(nn.Module):
                                 patch_size=2,
                                 in_chans=64,
                                 num_classes=20,
-                                embed_dim=96,
+                                embed_dim=64,
                                 depths=[2, 2, 6, 2],
                                 num_heads=[2, 4, 8, 16],
                                 window_size=8,
