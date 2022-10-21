@@ -302,6 +302,8 @@ class SwinTransformerBlock(nn.Module):
     def forward(self, x):
         H, W = self.input_resolution
         B, L, C = x.shape
+        print(L)
+        print(f"{H} {W}")
         assert L == H * W, "input feature has wrong size"
         
         # CNN before the attention
@@ -783,13 +785,11 @@ class SwinTransformerSys(nn.Module):
         ## temporal attention
         self.temporal_encoder = LTAE2d(
             in_channels=768,
-            d_model=256,
-            # d_model=1536,
+            d_model=768,
             n_head=16,
-            mlp=[256, 768],
-            # mlp=[1536, 768],
+            mlp=[768, 768],
             return_att=True,
-            d_k=8,
+            d_k=768 // 16,
         )
 
         self.temporal_aggregator = Temporal_Aggregator(mode="att_group")
