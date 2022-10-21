@@ -302,6 +302,8 @@ class SwinTransformerBlock(nn.Module):
     def forward(self, x):
         H, W = self.input_resolution
         B, L, C = x.shape
+        print(L)
+        print(f"{H} {W}")
         assert L == H * W, "input feature has wrong size"
         
         # CNN before the attention
