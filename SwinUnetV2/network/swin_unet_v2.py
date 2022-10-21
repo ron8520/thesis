@@ -891,7 +891,7 @@ class SwinTransformerSys(nn.Module):
 
         if self.final_upsample == "expand_first":
             x = self.up(x)
-            x = x.view(B, 4 * H, 4 * W, -1)
+            x = x.view(B, 2 * H, 2 * W, -1)
             x = x.permute(0, 3, 1, 2)  # B,C,H,W
             x = self.out_conv(x) # for output not like block
             x = self.output(x)
