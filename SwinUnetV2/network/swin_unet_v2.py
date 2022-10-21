@@ -794,7 +794,7 @@ class SwinTransformerSys(nn.Module):
 
         self.temporal_aggregator = Temporal_Aggregator(mode="att_group")
         self.pad_value = 0
-        self.features_sizes = [32, 16, 8, 4]
+        self.features_sizes = [64, 32, 16, 8]
         self.in_conv = ConvBlock(
             nkernels=[10] + [64, 64],
             pad_value=0,
