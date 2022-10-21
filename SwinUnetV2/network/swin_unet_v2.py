@@ -782,12 +782,12 @@ class SwinTransformerSys(nn.Module):
 
         ## temporal attention
         self.temporal_encoder = LTAE2d(
-            in_channels=768,
-            d_model=768,
+            in_channels=512,
+            d_model=512,
             n_head=16,
-            mlp=[768, 768],
+            mlp=[512, 512],
             return_att=True,
-            d_k=768 // 16,
+            d_k=512 // 16,
         )
 
         self.temporal_aggregator = Temporal_Aggregator(mode="att_group")
