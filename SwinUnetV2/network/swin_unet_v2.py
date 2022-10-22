@@ -458,14 +458,10 @@ class HyperUpLayer(nn.Module):
         self.concat = nn.Linear(concat_dim[0], concat_dim[1])
 
     def forward(self, x):
-        print(self.concat)
         x1 = self.patch_up(x)
         x2 = self.conv_up(x)
-        print(x1.shape)
-        print(x2.shape)
         x = torch.cat([x1, x2], -1)
         x = self.concat(x)
-        print(x.shape)
         return x
 
 
