@@ -391,10 +391,13 @@ class HyperDownLayer(nn.Module):
         super().__init__()
         self.patch_merging = PatchMerging(input_resolution, dim)
         self.conv_down = DownConvLayer(input_resolution, dim)
+        self.concat = nn.Linear(2 * dim, dim)
 
     def forward(self, x):
         x1 = self.patch_merging(x)
-        x = self.conv_down(x) + x1
+        x2 = self.conv_down(x)
+        x = self.concat([x1, x2], dim=-1)
+        x = self.concat(x)
         return x
 
 
@@ -446,9 +449,13 @@ class HyperUpLayer(nn.Module):
         super().__init__()
         self.patch_up = PatchExpand(input_resolution, dim)
         self.conv_up = UpConvLayer(input_resolution, dim)
+        self.concat = nn.Linear(2 * dim, dim)
+
     def forward(self, x):
         x1 = self.patch_up(x)
-        x = self.conv_up(x) + x1
+        x2 = self.conv_up(x)
+        x = torch.cat([x1, x2], dim=-1)
+        x = self.concat(x)
         return x
 
 class FinalPatchExpand_X4(nn.Module):
