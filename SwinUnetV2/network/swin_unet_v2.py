@@ -391,11 +391,14 @@ class DownConvLayer(TemporallySharedBlock):
 class HyperDownLayer(nn.Module):
     def __init__(self, input_resolution, dim, concat_dim=None):
         super().__init__()
+        self.dim = dim
         self.patch_merging = PatchMerging(input_resolution, dim)
         self.conv_down = DownConvLayer(input_resolution, dim)
         self.concat = nn.Linear(concat_dim[0], concat_dim[1])
 
     def forward(self, x):
+        print(f'dim: {self.dim}')
+        print(self.concat)
         x1 = self.patch_merging(x)
         x2 = self.conv_down(x)
         x = torch.concat([x1, x2], -1)
