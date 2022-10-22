@@ -415,7 +415,7 @@ class UpConvLayer(nn.Module):
         x = self.up(x)
         x = self.norm(x)
         x = rearrange(x, 'b c h w -> b (h w) c')
-        return
+        return x
 
 class PatchExpand(nn.Module):
     def __init__(self, input_resolution, dim, dim_scale=2, norm_layer=nn.LayerNorm):
