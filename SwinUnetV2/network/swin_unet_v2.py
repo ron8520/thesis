@@ -382,8 +382,8 @@ class DownConvLayer(TemporallySharedBlock):
         x = rearrange(x, 'b (h w) c-> b c h w', h=self.input_resolution[0], w=self.input_resolution[1])
         x = self.down(x)
         x = self.norm(x)
-        x = self.reduction(x)
         x = rearrange(x, 'b c h w -> b (h w) c')
+        x = self.reduction(x)
         return x
 
 class HyperDownLayer(nn.Module):
