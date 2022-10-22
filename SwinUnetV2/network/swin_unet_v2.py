@@ -5,7 +5,7 @@ from einops import rearrange, reduce
 from einops.layers.torch import Rearrange
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from src.backbones.ltae import LTAE2d
-from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
+from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock, TemporallySharedBlock
 from src.backbones.SeLayer import SELayer
 from src.backbones.componets import Feature_aliasing, Feature_reduce, MBConv
 
@@ -369,6 +369,40 @@ class PatchMerging(nn.Module):
         flops += (H // 2) * (W // 2) * 4 * self.dim * 2 * self.dim
         return flops
 
+class DownConvLayer(TemporallySharedBlock):
+    def __init__(self, input_resolution, dim, norm_layer=nn.BatchNorm2d):
+        super().__init__()
+        self.input_resolution = input_resolution
+        self.dim = dim
+        self.down = nn.Conv2d(dim, 4 * dim, kernel_size=4, stride=2, padding=1)
+        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+        self.norm = norm_layer(4 * dim)
+
+    def forward(self, x):
+        x = self.down(x)
+        x = self.norm(x)
+        x = self.reduction(x)
+        x = rearrange(x, 'b c h w -> b (h w) c')
+        return x
+
+class UpConvLayer(nn.Module):
+    def __init__(self, input_resolution, dim, dim_scale=2, norm_layer=nn.BatchNorm2d):
+        super(UpConvLayer, self).__init__()
+        self.expand = nn.Linear(dim, 2 * dim, bias=False) if dim_scale == 2 else nn.Identity()
+        self.up = nn.ConvTranspose2d(2 * dim, dim // dim_scale, kernel_size=4, stride=2, padding=1)
+        self.norm = norm_layer(dim // dim_scale)
+        self.input_resolution = input_resolution
+    def forward(self, x):
+        x = self.expand(x)
+        H, W = self.input_resolution
+        B, L, C = x.shape
+
+        x = x.view(B, H, W, C)
+        x = rearrange(x, 'b h w c -> b c h w')
+        x = self.up(x)
+        x = self.norm(x)
+        x = rearrange(x, 'b c h w -> b (h w) c')
+        return
 
 class PatchExpand(nn.Module):
     def __init__(self, input_resolution, dim, dim_scale=2, norm_layer=nn.LayerNorm):
