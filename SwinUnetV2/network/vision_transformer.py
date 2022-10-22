@@ -32,7 +32,7 @@ class SwinUnet(nn.Module):
                                 in_chans=64,
                                 num_classes=20,
                                 embed_dim=96,
-                                depths=[2, 2, 6, 2],
+                                depths=[3, 3, 9, 3],
                                 num_heads=[3, 6, 12, 24],
                                 window_size=4,
                                 mlp_ratio=4.,
