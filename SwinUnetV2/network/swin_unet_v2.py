@@ -396,6 +396,8 @@ class HyperDownLayer(nn.Module):
     def forward(self, x):
         x1 = self.patch_merging(x)
         x2 = self.conv_down(x)
+        print(x1.shape)
+        print(x2.shape)
         x = torch.concat([x1, x2], -1)
         print(x.shape)
         x = self.concat(x)
