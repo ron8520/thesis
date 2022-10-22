@@ -789,8 +789,8 @@ class SwinTransformerSys(nn.Module):
                                          norm_layer=norm_layer,
                                          upsample=HyperUpLayer if (i_layer < self.num_layers - 1) else None,
                                          use_checkpoint=use_checkpoint,
-                                         concat_dim=(2 * int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
-                                                     int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)))
+                                         concat_dim=(2 * int(embed_dim * 2 ** (self.num_layers - 2 - i_layer)),
+                                                     int(embed_dim * 2 ** (self.num_layers - 2 - i_layer)))
                                          )
             self.layers_up.append(layer_up)
             self.concat_back_dim.append(concat_linear)
