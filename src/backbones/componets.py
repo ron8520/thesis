@@ -1,6 +1,6 @@
 import torch.nn as nn
 from einops import rearrange
-from einops.layers.chainer import Reduce, Rearrange
+from einops.layers.torch import Reduce, Rearrange
 
 
 class SqueezeExcitation(nn.Module):
