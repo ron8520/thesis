@@ -397,8 +397,6 @@ class HyperDownLayer(nn.Module):
         self.concat = nn.Linear(concat_dim[0], concat_dim[1])
 
     def forward(self, x):
-        print(f'dim: {self.dim}')
-        print(self.concat)
         x1 = self.patch_merging(x)
         x2 = self.conv_down(x)
         x = torch.concat([x1, x2], -1)
@@ -754,8 +752,8 @@ class SwinTransformerSys(nn.Module):
                                norm_layer=norm_layer,
                                downsample=HyperDownLayer if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint,
-                               concat_dim=(2 * int(embed_dim * 2 ** i_layer),
-                                           int(embed_dim * 2 ** i_layer))
+                               concat_dim=(2 * int(embed_dim * 2 ** (i_layer + 1)),
+                                           int(embed_dim * 2 ** (i_layer + 1)))
                                )
             self.layers.append(layer)
 
@@ -787,8 +785,8 @@ class SwinTransformerSys(nn.Module):
                                          norm_layer=norm_layer,
                                          upsample=HyperUpLayer if (i_layer < self.num_layers - 1) else None,
                                          use_checkpoint=use_checkpoint,
-                                         concat_dim=(2 * int(embed_dim * 2 ** i_layer),
-                                                     int(embed_dim * 2 ** i_layer))
+                                         concat_dim=(2 * int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
+                                                     int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)))
                                          )
             self.layers_up.append(layer_up)
             self.concat_back_dim.append(concat_linear)
