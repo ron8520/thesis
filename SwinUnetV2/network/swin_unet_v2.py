@@ -396,7 +396,7 @@ class HyperDownLayer(nn.Module):
     def forward(self, x):
         x1 = self.patch_merging(x)
         x2 = self.conv_down(x)
-        x = self.concat([x1, x2], dim=-1)
+        x = self.concat([x1, x2], -1)
         x = self.concat(x)
         return x
 
@@ -454,7 +454,7 @@ class HyperUpLayer(nn.Module):
     def forward(self, x):
         x1 = self.patch_up(x)
         x2 = self.conv_up(x)
-        x = torch.cat([x1, x2], dim=-1)
+        x = torch.cat([x1, x2], -1)
         x = self.concat(x)
         return x
 
