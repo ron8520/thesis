@@ -537,7 +537,13 @@ class BasicLayer_up(nn.Module):
                                  qkv_bias=qkv_bias, qk_scale=qk_scale,
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer)
+                                 norm_layer=norm_layer)if i != 0 else
+            MBConv(
+                dim_in=dim,
+                dim_out=dim,
+                input_resolution=input_resolution,
+                dropout=drop
+            )
             for i in range(depth)])
 
         # patch merging layer
