@@ -441,7 +441,7 @@ class PatchExpand(nn.Module):
         return x
 
 class HyperUpLayer(nn.Module):
-    def __init(self, input_resolution, dim):
+    def __init__(self, input_resolution, dim):
         super().__init()
         self.patch_up = PatchExpand(input_resolution, dim)
         self.conv_up = UpConvLayer(input_resolution, dim)
