@@ -385,6 +385,18 @@ class DownConvLayer(TemporallySharedBlock):
         x = rearrange(x, 'b c h w -> b (h w) c')
         return x
 
+class HyperDownLayer(nn.Module):
+    def __init__(self, input_resolution, dim):
+        super().__init__()
+        self.patch_merging = PatchMerging(input_resolution, dim)
+        self.conv_down = DownConvLayer(input_resolution, dim)
+
+    def forward(self, x):
+        x1 = self.patch_merging(x)
+        x = self.conv_down(x) + x1
+        return x
+
+
 class UpConvLayer(nn.Module):
     def __init__(self, input_resolution, dim, dim_scale=2, norm_layer=nn.BatchNorm2d):
         super(UpConvLayer, self).__init__()
@@ -428,6 +440,15 @@ class PatchExpand(nn.Module):
 
         return x
 
+class HyperUpLayer(nn.Module):
+    def __init(self, input_resolution, dim):
+        super().__init()
+        self.patch_up = PatchExpand(input_resolution, dim)
+        self.conv_up = UpConvLayer(input_resolution, dim)
+    def forward(self, x):
+        x1 = self.patch_up(x)
+        x = self.conv_up(x) + x1
+        return x
 
 class FinalPatchExpand_X4(nn.Module):
     def __init__(self, input_resolution, dim, dim_scale=4, norm_layer=nn.LayerNorm):
@@ -496,18 +517,12 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer
-                                 ) if i != 0 else
-            MBConv(
-                dim_in=dim,
-                dim_out=dim,
-                input_resolution=input_resolution,
-                dropout=drop
-            )
+                                 )
             for i in range(depth)])
 
         # patch merging layer
         if downsample is not None:
-            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
+            self.downsample = downsample(input_resolution, dim=dim)
         else:
             self.downsample = None
 
@@ -571,18 +586,12 @@ class BasicLayer_up(nn.Module):
                                  qkv_bias=qkv_bias, qk_scale=qk_scale,
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer)if i != 0 else
-            MBConv(
-                dim_in=dim,
-                dim_out=dim,
-                input_resolution=input_resolution,
-                dropout=drop
-            )
+                                 norm_layer=norm_layer)
             for i in range(depth)])
 
         # patch merging layer
         if upsample is not None:
-            self.upsample = PatchExpand(input_resolution, dim=dim, dim_scale=2, norm_layer=norm_layer)
+            self.upsample = HyperUpLayer(input_resolution, dim=dim)
         else:
             self.upsample = None
 
@@ -724,7 +733,7 @@ class SwinTransformerSys(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsample=HyperDownLayer if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint)
             self.layers.append(layer)
 
@@ -754,7 +763,7 @@ class SwinTransformerSys(nn.Module):
                                          drop_path=dpr[sum(depths[:(self.num_layers - 1 - i_layer)]):sum(
                                              depths[:(self.num_layers - 1 - i_layer) + 1])],
                                          norm_layer=norm_layer,
-                                         upsample=PatchExpand if (i_layer < self.num_layers - 1) else None,
+                                         upsample=HyperUpLayer if (i_layer < self.num_layers - 1) else None,
                                          use_checkpoint=use_checkpoint)
             self.layers_up.append(layer_up)
             self.concat_back_dim.append(concat_linear)
@@ -765,13 +774,11 @@ class SwinTransformerSys(nn.Module):
         ## temporal attention
         self.temporal_encoder = LTAE2d(
             in_channels=768,
-            d_model=256,
-            # d_model=1536,
+            d_model=768,
             n_head=16,
-            mlp=[256, 768],
-            # mlp=[1536, 768],
+            mlp=[768, 768],
             return_att=True,
-            d_k=8,
+            d_k=768 // 16,
         )
 
         self.temporal_aggregator = Temporal_Aggregator(mode="att_group")
@@ -827,14 +834,6 @@ class SwinTransformerSys(nn.Module):
                 nn.init.normal_(m.bias.data)
             except AttributeError:
                 pass
-
-    # @torch.jit.ignore
-    # def no_weight_decay(self):
-    #     return {'absolute_pos_embed'}
-    #
-    # @torch.jit.ignore
-    # def no_weight_decay_keywords(self):
-    #     return {'relative_position_bias_table'}
 
     # Encoder and Bottleneck
     def forward_features(self, x):
