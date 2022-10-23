@@ -796,7 +796,7 @@ class SwinTransformerSys(nn.Module):
         self.pad_value = 0
         self.features_sizes = [32, 16, 8, 4]
         self.in_conv = ConvBlock(
-            nkernels=[10] + [64, 64],
+            nkernels=[10] + [96, 96],
             pad_value=0,
             norm="group",
             padding_mode="reflect",
