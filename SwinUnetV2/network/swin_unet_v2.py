@@ -396,7 +396,7 @@ class HyperDownLayer(nn.Module):
     def forward(self, x, T=None):
         B, L, C = x.shape
         x1 = self.patch_merging(x)
-        x2 = rearrange(x, "(b t) (h w) c -> b t c h w", b=B, t=T,
+        x2 = rearrange(x, "(b t) (h w) c -> b t c h w", b=B//T, t=T,
                        h=self.input_resolution[0], w=self.input_resolution[1])
         x2 = self.conv_down.smart_forward(x2)
         x2 = rearrange(x2, 'b t c h w -> (b t) (h w) c')
