@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from torch import einsum
 
+from SwinUnetV2.network.swin_unet_v2 import Mlp_Relu
 from src.backbones.positional_encoding import PositionalEncoder
 
 
@@ -19,7 +20,7 @@ class LTAE2d(nn.Module):
         d_model=256,
         T=1000,
         return_att=False,
-        positional_encoding=True,
+        positional_encoding=False,
     ):
         """
         Lightweight Temporal Attention Encoder (L-TAE) for image time series.
@@ -199,11 +200,34 @@ class ScaledDotProductAttention(nn.Module):
         self.temperature = temperature
         self.dropout = nn.Dropout(attn_dropout)
         self.softmax = nn.Softmax(dim=2)
+        self.max_len = 61
+
+        coords_h = torch.arange(self.max_len)
+        coords_w = torch.arange(self.max_len)
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, max_len, max_len
+        coords_flatten = torch.flatten(coords, 1)  # 2, max_len
+        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, max_len*max_len, max_len*max_len
+        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # max_len*max_len, max_len*max_len, 2
+
+        log_relative_position_index = torch.sign(relative_coords) * torch.log(1. + relative_coords.abs())
+        self.cpb = Mlp_Relu(in_features=2,  # delta x, delta y
+                            hidden_features=256,  # hidden dims
+                            out_features=self.num_heads,
+                            dropout=0.0)
+
+    def get_continuous_relative_position_bias(self, N):
+        # The continuous position bias approach adopts a small meta network on the relative coordinates
+        continuous_relative_position_bias = self.cpb(self.log_relative_position_index[:N, :N])
+        return continuous_relative_position_bias
 
     def forward(self, q, k, v, pad_mask=None, return_comp=False):
+        N = k[1]
         attn = einsum('b i d, b t d -> b i t', q.unsqueeze(1), k) / self.temperature
-        # attn = torch.matmul(q.unsqueeze(1), k.transpose(1, 2))
-        # attn = attn / self.temperature
+
+        relative_position_bias = self.get_continuous_relative_position_bias(N)
+        relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+        attn = attn + relative_position_bias.unsqueeze(0)
+
         if pad_mask is not None:
             attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
         if return_comp:
@@ -212,7 +236,6 @@ class ScaledDotProductAttention(nn.Module):
         attn = self.softmax(attn)
         attn = self.dropout(attn)
         output = einsum('b i t, b t d -> b i d', attn, v)
-        # output = torch.matmul(attn, v)
 
         if return_comp:
             return output, attn, comp
