@@ -3,6 +3,7 @@ import copy
 import numpy as np
 import torch
 import torch.nn as nn
+from torch import einsum
 
 from src.backbones.positional_encoding import PositionalEncoder
 
@@ -203,9 +204,9 @@ class ScaledDotProductAttention(nn.Module):
         q = q.unsqueeze(1)
         print(q.shape)
         print(k.shape)
-        attn = einsum('b h d, ', q, k) * self.temperature
-        attn = torch.matmul(q.unsqueeze(1), k.transpose(1, 2))
-        attn = attn / self.temperature
+        attn = einsum('b i d, b t d -> b d t', q, k) * self.temperature
+        # attn = torch.matmul(q.unsqueeze(1), k.transpose(1, 2))
+        # attn = attn / self.temperature
         if pad_mask is not None:
             attn = attn.masked_fill(pad_mask.unsqueeze(1), -1e3)
         if return_comp:
