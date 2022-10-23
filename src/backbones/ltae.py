@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 from torch import einsum
 
-from SwinUnetV2.network.swin_unet_v2 import Mlp_Relu
 from src.backbones.positional_encoding import PositionalEncoder
 
 
@@ -241,3 +240,20 @@ class ScaledDotProductAttention(nn.Module):
             return output, attn, comp
         else:
             return output, attn
+
+class Mlp_Relu(nn.Module):
+
+    def __init__(self, in_features, hidden_features, out_features, dropout):
+        super(Mlp_Relu, self).__init__()
+        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.act = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
+        x = self.dropout(x)
+        return x
