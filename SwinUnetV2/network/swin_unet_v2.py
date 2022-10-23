@@ -8,50 +8,20 @@ from src.backbones.ltae import LTAE2d
 from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
 from src.backbones.componets import Feature_aliasing, Feature_reduce
-import math
 
-class DWConv(nn.Module):
-    def __init__(self, dim=768):
-        super(DWConv, self).__init__()
-        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
-
-    def forward(self, x, H, W):
-        B, N, C = x.shape
-        x = x.transpose(1, 2).view(B, C, H, W)
-        x = self.dwconv(x)
-        x = x.flatten(2).transpose(1, 2)
-
-        return x
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
         self.fc1 = nn.Linear(in_features, hidden_features)
-        self.dwconv = DWConv(hidden_features)
         self.act = act_layer()
         self.fc2 = nn.Linear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
-        self.apply(self._init_weights)
 
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv2d):
-            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-            fan_out //= m.groups
-            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
-            if m.bias is not None:
-                m.bias.data.zero_()
-
-    def forward(self, x, H, W):
+    def forward(self, x):
         x = self.fc1(x)
-        x = self.act(x + self.dwconv(x, H, W))
+        x = self.act(x)
         x = self.drop(x)
         x = self.fc2(x)
         x = self.drop(x)
@@ -386,7 +356,7 @@ class SwinTransformerBlock(nn.Module):
         # x = x + self.drop_path(self.mlp(self.norm2(x)))
 
         # Swin v2
-        x = x + self.drop_path(self.norm2(self.mlp(x, H=H, W=W)))
+        x = x + self.drop_path(self.norm2(self.mlp(x)))
         
         # CNN after the attention
         # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
@@ -844,8 +814,9 @@ class SwinTransformerSys(nn.Module):
             self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
                                           dim_scale=4, dim=embed_dim)
             self.out_conv = nn.Sequential(
-              Feature_aliasing(embed_dim),
-              Feature_aliasing(embed_dim)
+                nn.Conv2d(2 * embed_dim, embed_dim, 1),
+                Feature_aliasing(embed_dim),
+                Feature_aliasing(embed_dim)
               # Feature_reduce(embed_dim, embed_dim // 2),
               # Feature_aliasing(embed_dim // 2)
             )
@@ -914,7 +885,7 @@ class SwinTransformerSys(nn.Module):
 
         return x
 
-    def up_x4(self, x):
+    def up_x4(self, x, skip=None):
         H, W = self.patches_resolution
         B, L, C = x.shape
         assert L == H * W, "input features has wrong size"
@@ -923,6 +894,7 @@ class SwinTransformerSys(nn.Module):
             x = self.up(x)
             x = x.view(B, 4 * H, 4 * W, -1)
             x = x.permute(0, 3, 1, 2)  # B,C,H,W
+            x = torch.cat([skip, x], dim=1)
             x = self.out_conv(x) # for output not like block
             x = self.output(x)
 
@@ -935,6 +907,7 @@ class SwinTransformerSys(nn.Module):
         
         B, T, C, H, W = x.shape
         x = self.in_conv.smart_forward(x)
+        feature_map = x
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
         #spatial encoder
@@ -958,10 +931,12 @@ class SwinTransformerSys(nn.Module):
           x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
           x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')      
 
+        feature_map = self.temporal_aggregator(feature_map, pad_mask=pad_mask, attn_mask=att)
+
         #decoder
         x = self.forward_up_features(x, x_downsample)
         x = self.se(x)
-        x = self.up_x4(x)
+        x = self.up_x4(x, skip=feature_map)
 
         return x
 
