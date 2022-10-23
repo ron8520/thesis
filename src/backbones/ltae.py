@@ -201,7 +201,7 @@ class ScaledDotProductAttention(nn.Module):
         self.softmax = nn.Softmax(dim=2)
         self.max_len = 61
 
-        coords_h = torch.arange(self.max_len)
+        coords_h = torch.arange(1)
         coords_w = torch.arange(self.max_len)
         coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, max_len, max_len
         coords_flatten = torch.flatten(coords, 1)  # 2, max_len
