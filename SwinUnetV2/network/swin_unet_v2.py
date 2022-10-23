@@ -369,32 +369,38 @@ class PatchMerging(nn.Module):
         flops += (H // 2) * (W // 2) * 4 * self.dim * 2 * self.dim
         return flops
 
+
 class DownConvLayer(TemporallySharedBlock):
     def __init__(self, input_resolution, dim, norm_layer=nn.BatchNorm2d):
         super().__init__()
         self.input_resolution = input_resolution
         self.dim = dim
         self.down = nn.Conv2d(dim, 4 * dim, kernel_size=4, stride=2, padding=1)
-        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+        self.reduction = nn.Conv2d(4 * dim, 2 * dim, 1, bias=False)
         self.norm = norm_layer(4 * dim)
 
     def forward(self, x):
-        x = rearrange(x, 'b (h w) c-> b c h w', h=self.input_resolution[0], w=self.input_resolution[1])
         x = self.down(x)
         x = self.norm(x)
-        x = rearrange(x, 'b c h w -> b (h w) c')
         x = self.reduction(x)
         return x
+
 
 class HyperDownLayer(nn.Module):
     def __init__(self, input_resolution, dim):
         super().__init__()
         self.patch_merging = PatchMerging(input_resolution, dim)
         self.conv_down = DownConvLayer(input_resolution, dim)
+        self.input_resolution = input_resolution
 
-    def forward(self, x):
+    def forward(self, x, T=None):
+        B, L, C = x.shape
         x1 = self.patch_merging(x)
-        x = self.conv_down.smart_forward(x) + x1
+        x2 = rearrange(x, "(b t) (h w) c -> b t c h w", b=B, t=T,
+                       h=self.input_resolution[0], w=self.input_resolution[1])
+        x2 = self.conv_down.smart_forward(x2)
+        x2 = rearrange(x2, 'b t c h w -> (b t) (h w) c')
+        x = x1 + x2
         return x
 
 
@@ -405,6 +411,7 @@ class UpConvLayer(nn.Module):
         self.up = nn.ConvTranspose2d(2 * dim, dim // dim_scale, kernel_size=4, stride=2, padding=1)
         self.norm = norm_layer(dim // dim_scale)
         self.input_resolution = input_resolution
+
     def forward(self, x):
         x = self.expand(x)
         H, W = self.input_resolution
@@ -416,6 +423,7 @@ class UpConvLayer(nn.Module):
         x = self.norm(x)
         x = rearrange(x, 'b c h w -> b (h w) c')
         return x
+
 
 class PatchExpand(nn.Module):
     def __init__(self, input_resolution, dim, dim_scale=2, norm_layer=nn.LayerNorm):
@@ -441,15 +449,18 @@ class PatchExpand(nn.Module):
 
         return x
 
+
 class HyperUpLayer(nn.Module):
     def __init__(self, input_resolution, dim):
         super().__init__()
         self.patch_up = PatchExpand(input_resolution, dim)
         self.conv_up = UpConvLayer(input_resolution, dim)
+
     def forward(self, x):
         x1 = self.patch_up(x)
         x = self.conv_up(x) + x1
         return x
+
 
 class FinalPatchExpand_X4(nn.Module):
     def __init__(self, input_resolution, dim, dim_scale=4, norm_layer=nn.LayerNorm):
@@ -744,7 +755,7 @@ class SwinTransformerSys(nn.Module):
         for i_layer in range(self.num_layers):
             concat_linear = nn.Linear(2 * int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
                                       int(embed_dim * 2 ** (
-                                                  self.num_layers - 1 - i_layer))) if i_layer > 0 else nn.Identity()
+                                              self.num_layers - 1 - i_layer))) if i_layer > 0 else nn.Identity()
             if i_layer == 0:
                 layer_up = PatchExpand(
                     input_resolution=(patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
@@ -753,8 +764,8 @@ class SwinTransformerSys(nn.Module):
             else:
                 layer_up = BasicLayer_up(dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
                                          input_resolution=(
-                                         patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
-                                         patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
+                                             patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                                             patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
                                          depth=depths[(self.num_layers - 1 - i_layer)],
                                          num_heads=num_heads[(self.num_layers - 1 - i_layer)],
                                          window_size=window_size,
@@ -791,12 +802,12 @@ class SwinTransformerSys(nn.Module):
             norm="group",
             padding_mode="reflect",
         )
-        
+
         ## SE block
         self.se = nn.Sequential(
-          Rearrange('b (h w) c -> b c h w', h=self.features_sizes[0], w=self.features_sizes[0]),
-          SELayer(embed_dim),
-          Rearrange('b c h w -> b (h w) c')
+            Rearrange('b (h w) c -> b c h w', h=self.features_sizes[0], w=self.features_sizes[0]),
+            SELayer(embed_dim),
+            Rearrange('b c h w -> b (h w) c')
         )
 
         if self.final_upsample == "expand_first":
@@ -804,13 +815,12 @@ class SwinTransformerSys(nn.Module):
             self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
                                           dim_scale=4, dim=embed_dim)
             self.out_conv = nn.Sequential(
-              Feature_aliasing(embed_dim),
-              Feature_aliasing(embed_dim)
-              # Feature_reduce(embed_dim, embed_dim // 2),
-              # Feature_aliasing(embed_dim // 2)
+                Feature_aliasing(embed_dim),
+                Feature_aliasing(embed_dim)
+                # Feature_reduce(embed_dim, embed_dim // 2),
+                # Feature_aliasing(embed_dim // 2)
             )
             self.output = nn.Conv2d(in_channels=embed_dim, out_channels=self.num_classes, kernel_size=1, bias=False)
-
 
         self.apply(self._init_weights)
 
@@ -875,42 +885,42 @@ class SwinTransformerSys(nn.Module):
             x = self.up(x)
             x = x.view(B, 4 * H, 4 * W, -1)
             x = x.permute(0, 3, 1, 2)  # B,C,H,W
-            x = self.out_conv(x) # for output not like block
+            x = self.out_conv(x)  # for output not like block
             x = self.output(x)
 
         return x
 
     def forward(self, x, batch_positions=None):
         pad_mask = (
-          (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
+            (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
         )  # BxT pad mask
-        
+
         B, T, C, H, W = x.shape
         x = self.in_conv.smart_forward(x)
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
-        #spatial encoder
+        # spatial encoder
         x, x_downsample = self.forward_features(x, T=T)
-        
-        x = rearrange(x, '(b t) (h w) c -> b t c h w', 
-          b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
-        
+
+        x = rearrange(x, '(b t) (h w) c -> b t c h w',
+                      b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
+
         x, att = self.temporal_encoder(
-          x,
-          batch_positions=batch_positions, 
-          pad_mask=pad_mask
+            x,
+            batch_positions=batch_positions,
+            pad_mask=pad_mask
         )
 
         x = rearrange(x, 'b c h w -> b (h w) c')
 
         # Reshape back to 5 dims 
         for i, elements in enumerate(x_downsample):
-          x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
-            b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])   
-          x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
-          x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')      
+            x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
+                                        b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
+            x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
+            x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')
 
-        #decoder
+            # decoder
         x = self.forward_up_features(x, x_downsample)
         x = self.se(x)
         x = self.up_x4(x)
@@ -927,9 +937,7 @@ class SwinTransformerSys(nn.Module):
         return flops
 
 
-
-
-if __name__=='__main__':
+if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print('#### Test Model ###')
     x = torch.rand(4, 3, 224, 224).to(device)
