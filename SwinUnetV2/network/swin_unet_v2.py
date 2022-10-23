@@ -894,6 +894,7 @@ class SwinTransformerSys(nn.Module):
             x = self.up(x)
             x = x.view(B, 4 * H, 4 * W, -1)
             x = x.permute(0, 3, 1, 2)  # B,C,H,W
+            print(skip.shape)
             x = torch.cat([skip, x], dim=1)
             x = self.out_conv(x) # for output not like block
             x = self.output(x)
