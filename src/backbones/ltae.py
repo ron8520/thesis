@@ -227,7 +227,7 @@ class ScaledDotProductAttention(nn.Module):
 
         relative_position_bias = self.get_continuous_relative_position_bias(T)
         relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
-        print(f"relative_position_bias: {relative_position_bias.shape.shape}")
+        print(f"relative_position_bias: {relative_position_bias.shape}")
         print(f"attn shape: {attn.shape}")
         attn = attn + relative_position_bias
 
