@@ -200,6 +200,10 @@ class ScaledDotProductAttention(nn.Module):
         self.softmax = nn.Softmax(dim=2)
 
     def forward(self, q, k, v, pad_mask=None, return_comp=False):
+        q = q.unsqueeze(1)
+        print(q.shape)
+        print(k.shape)
+        attn = einsum('b h d, ', q, k) * self.temperature
         attn = torch.matmul(q.unsqueeze(1), k.transpose(1, 2))
         attn = attn / self.temperature
         if pad_mask is not None:

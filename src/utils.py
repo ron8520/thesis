@@ -27,7 +27,10 @@ def pad_collate(batch, pad_value=0):
         out = None
         if len(elem.shape) > 0:
             sizes = [e.shape[0] for e in batch]
-            m = max(sizes)
+            if 128 in sizes:
+                m = max(sizes)
+            else:
+                m = 61
             if not all(s == m for s in sizes):
                 # pad tensors which have a temporal dimension
                 batch = [pad_tensor(e, m, pad_value=pad_value) for e in batch]
