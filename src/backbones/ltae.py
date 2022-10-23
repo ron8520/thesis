@@ -204,7 +204,7 @@ class ScaledDotProductAttention(nn.Module):
         q = q.unsqueeze(1)
         print(q.shape)
         print(k.shape)
-        attn = einsum('b i d, b t d -> b d t', q, k) * self.temperature
+        attn = einsum('b i d, b t d -> b d t', q, k) / self.temperature
         # attn = torch.matmul(q.unsqueeze(1), k.transpose(1, 2))
         # attn = attn / self.temperature
         if pad_mask is not None:
