@@ -203,7 +203,7 @@ class ScaledDotProductAttention(nn.Module):
     def forward(self, q, k, v, pad_mask=None, return_comp=False):
         print(q.shape)
         print(k.shape)
-        attn = einsum('b i d, b t d -> b d t', q.unsqueeze(1), k) / self.temperature
+        attn = einsum('b i d, b t d -> b i t', q.unsqueeze(1), k) / self.temperature
         print(attn.shape)
         # attn = torch.matmul(q.unsqueeze(1), k.transpose(1, 2))
         # attn = attn / self.temperature
