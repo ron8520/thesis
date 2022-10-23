@@ -209,9 +209,11 @@ class ScaledDotProductAttention(nn.Module):
         relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # max_len*max_len, max_len*max_len, 2
 
         log_relative_position_index = torch.sign(relative_coords) * torch.log(1. + relative_coords.abs())
+        self.register_buffer("log_relative_position_index", log_relative_position_index)
+
         self.cpb = Mlp_Relu(in_features=2,  # delta x, delta y
                             hidden_features=256,  # hidden dims
-                            out_features=self.num_heads,
+                            out_features=16,
                             dropout=0.0)
 
     def get_continuous_relative_position_bias(self, N):
