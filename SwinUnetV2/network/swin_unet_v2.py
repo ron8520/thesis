@@ -8,20 +8,50 @@ from src.backbones.ltae import LTAE2d
 from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
 from src.backbones.componets import Feature_aliasing, Feature_reduce
+import math
 
+class DWConv(nn.Module):
+    def __init__(self, dim=768):
+        super(DWConv, self).__init__()
+        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
+
+    def forward(self, x, H, W):
+        B, N, C = x.shape
+        x = x.transpose(1, 2).view(B, C, H, W)
+        x = self.dwconv(x)
+        x = x.flatten(2).transpose(1, 2)
+
+        return x
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
         self.fc1 = nn.Linear(in_features, hidden_features)
+        self.dwconv = DWConv(hidden_features)
         self.act = act_layer()
         self.fc2 = nn.Linear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
+        self.apply(self._init_weights)
 
-    def forward(self, x):
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+            fan_out //= m.groups
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            if m.bias is not None:
+                m.bias.data.zero_()
+
+    def forward(self, x, H, W):
         x = self.fc1(x)
-        x = self.act(x)
+        x = self.act(x + self.dwconv(x, H, W))
         x = self.drop(x)
         x = self.fc2(x)
         x = self.drop(x)
@@ -356,7 +386,7 @@ class SwinTransformerBlock(nn.Module):
         # x = x + self.drop_path(self.mlp(self.norm2(x)))
 
         # Swin v2
-        x = x + self.drop_path(self.norm2(self.mlp(x)))
+        x = x + self.drop_path(self.norm2(self.mlp(x, H=H, W=W)))
         
         # CNN after the attention
         # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
@@ -638,7 +668,7 @@ class PatchEmbed(nn.Module):
         self.in_chans = in_chans
         self.embed_dim = embed_dim
 
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=7, stride=patch_size, padding=3)
+        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
         if norm_layer is not None:
             self.norm = norm_layer(embed_dim)
         else:
