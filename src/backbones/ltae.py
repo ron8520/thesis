@@ -202,7 +202,6 @@ class ScaledDotProductAttention(nn.Module):
 
     def forward(self, q, k, v, pad_mask=None, return_comp=False):
         attn = einsum('b i d, b t d -> b i t', q.unsqueeze(1), k) / self.temperature
-        print(attn.shape)
         # attn = torch.matmul(q.unsqueeze(1), k.transpose(1, 2))
         # attn = attn / self.temperature
         if pad_mask is not None:
@@ -212,9 +211,8 @@ class ScaledDotProductAttention(nn.Module):
         # compat = attn
         attn = self.softmax(attn)
         attn = self.dropout(attn)
-        print(v.shape)
-        output = einsum('b i t, ')
-        output = torch.matmul(attn, v)
+        output = einsum('b i t, b t d -> b i d', attn, v)
+        # output = torch.matmul(attn, v)
 
         if return_comp:
             return output, attn, comp
