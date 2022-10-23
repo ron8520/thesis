@@ -222,10 +222,10 @@ class ScaledDotProductAttention(nn.Module):
         return continuous_relative_position_bias
 
     def forward(self, q, k, v, pad_mask=None, return_comp=False):
-        N = k[1]
+        B, T, D = k.shape
         attn = einsum('b i d, b t d -> b i t', q.unsqueeze(1), k) / self.temperature
 
-        relative_position_bias = self.get_continuous_relative_position_bias(N)
+        relative_position_bias = self.get_continuous_relative_position_bias(T)
         relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
         attn = attn + relative_position_bias.unsqueeze(0)
 
