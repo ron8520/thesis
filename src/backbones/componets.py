@@ -160,7 +160,7 @@ class MultiSwinTransformerBlock(nn.Module):
     def forward(self, x, s1a, s1d):
 
         B, N, C = x.shape
-        H, W = math.sqrt(N)
+        H, W = int(math.sqrt(N)), int(math.sqrt(N))
         Ba, Na, Ca = s1a.shape
         Bd, Nd, Cd = s1d.shape
 
