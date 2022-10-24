@@ -829,20 +829,20 @@ class SwinTransformerSys(nn.Module):
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
         Ba, Ta, Ca, Ha, Wa = x1a.shape
-        x1a = self.in_conv.smart_forward(x1a)
+        x1a = self.in_conv_s1a.smart_forward(x1a)
         x1a = rearrange(x1a, 'b t c h w -> (b t) c h w')
 
         Bd, Td, Cd, Hd, Wd = x1a.shape
-        x1d = self.in_conv.smart_forward(x1d)
+        x1d = self.in_conv_s1d.smart_forward(x1d)
         x1d = rearrange(x1d, 'b t c h w -> (b t) c h w')
 
         x = self.patch_embed(x)
         x = self.pos_drop(x)
 
-        x1a = self.patch_embed(x1a)
+        x1a = self.patch_embed_s1a(x1a)
         x1a = self.pos_drop(x1a)
 
-        x1d = self.patch_embed(x1d)
+        x1d = self.patch_embed_s1d(x1d)
         x1d = self.pos_drop(x1d)
 
         x_downsample = []
