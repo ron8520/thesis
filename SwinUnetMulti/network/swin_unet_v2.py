@@ -852,9 +852,11 @@ class SwinTransformerSys(nn.Module):
             x = layer(x)
             x1a = self.layers_s1a[index](x1a)
             x1d = self.layers_s1d[index](x1d)
+            print(f"{index}: -----")
             print(x.shape)
             print(x1a.shape)
             print(x1d.shape)
+            print()
             ## concat other modelity
             x = self.concat_dims[index](x, x1a, x1d)
 
