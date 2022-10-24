@@ -6,6 +6,8 @@ import torch.nn as nn
 from einops import rearrange
 from einops.layers.torch import Rearrange
 
+from src.backbones.SeLayer import SELayer
+
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -260,7 +262,8 @@ class MultiWindowAttention(nn.Module):
             nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(dim),
             nn.GELU(),
-            nn.Dropout(proj_drop)
+            nn.Dropout(proj_drop),
+            SELayer(dim)
         )
         self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
 
