@@ -10,6 +10,7 @@ from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
 from src.backbones.componets import Feature_aliasing, Feature_reduce, MultiSwinTransformerBlock
 
+
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
@@ -144,7 +145,6 @@ class WindowAttention(nn.Module):
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
-
         # Swin v2, Scaled cosine attention
         q = q * self.scale
         attn = torch.einsum("bhqd, bhkd -> bhqk", q, k) / torch.maximum(
@@ -258,13 +258,11 @@ class SwinTransformerBlock(nn.Module):
 
         self.register_buffer("attn_mask", attn_mask)
 
-
-
     def forward(self, x):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
-        
+
         shortcut = x
 
         x = x.view(B, H, W, C)
@@ -445,7 +443,7 @@ class BasicLayer(nn.Module):
 
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,):
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False, ):
 
         super().__init__()
         self.dim = dim
@@ -702,8 +700,8 @@ class SwinTransformerSys(nn.Module):
         for i_layer in range(self.num_layers):
             self.concat_dims.append(
                 MultiSwinTransformerBlock(
-                    dim=int(embed_dim * 2 ** (i_layer + 1))
-                        if i_layer != (self.num_layers - 1) else int(embed_dim * 2 ** i_layer),
+                    dim=int(embed_dim * 2 ** i_layer),
+                    # if i_layer != (self.num_layers - 1) else int(embed_dim * 2 ** i_layer),
                     num_heads=16,
                     window_size=4,
                     mlp_ratio=4.,
@@ -718,36 +716,35 @@ class SwinTransformerSys(nn.Module):
             )
 
         # build decoder layers
-        if decoder == True:
-          self.layers_up = nn.ModuleList()
-          self.concat_back_dim = nn.ModuleList()
-          for i_layer in range(self.num_layers):
-              concat_linear = nn.Linear(2 * int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
-                                        int(embed_dim * 2 ** (
-                                                    self.num_layers - 1 - i_layer))) if i_layer > 0 else nn.Identity()
-              if i_layer == 0:
-                  layer_up = PatchExpand(
-                      input_resolution=(patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
-                                        patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
-                      dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)), dim_scale=2, norm_layer=norm_layer)
-              else:
-                  layer_up = BasicLayer_up(dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
-                                          input_resolution=(
-                                          patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
-                                          patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
-                                          depth=depths[(self.num_layers - 1 - i_layer)],
-                                          num_heads=num_heads[(self.num_layers - 1 - i_layer)],
-                                          window_size=window_size,
-                                          mlp_ratio=self.mlp_ratio,
-                                          qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                          drop=drop_rate, attn_drop=attn_drop_rate,
-                                          drop_path=dpr[sum(depths[:(self.num_layers - 1 - i_layer)]):sum(
-                                              depths[:(self.num_layers - 1 - i_layer) + 1])],
-                                          norm_layer=norm_layer,
-                                          upsample=PatchExpand if (i_layer < self.num_layers - 1) else None,
-                                          use_checkpoint=use_checkpoint)
-              self.layers_up.append(layer_up)
-              self.concat_back_dim.append(concat_linear)
+        self.layers_up = nn.ModuleList()
+        self.concat_back_dim = nn.ModuleList()
+        for i_layer in range(self.num_layers):
+            concat_linear = nn.Linear(2 * int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
+                                      int(embed_dim * 2 ** (
+                                              self.num_layers - 1 - i_layer))) if i_layer > 0 else nn.Identity()
+            if i_layer == 0:
+                layer_up = PatchExpand(
+                    input_resolution=(patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                                      patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
+                    dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)), dim_scale=2, norm_layer=norm_layer)
+            else:
+                layer_up = BasicLayer_up(dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
+                                         input_resolution=(
+                                             patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                                             patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
+                                         depth=depths[(self.num_layers - 1 - i_layer)],
+                                         num_heads=num_heads[(self.num_layers - 1 - i_layer)],
+                                         window_size=window_size,
+                                         mlp_ratio=self.mlp_ratio,
+                                         qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                         drop=drop_rate, attn_drop=attn_drop_rate,
+                                         drop_path=dpr[sum(depths[:(self.num_layers - 1 - i_layer)]):sum(
+                                             depths[:(self.num_layers - 1 - i_layer) + 1])],
+                                         norm_layer=norm_layer,
+                                         upsample=PatchExpand if (i_layer < self.num_layers - 1) else None,
+                                         use_checkpoint=use_checkpoint)
+            self.layers_up.append(layer_up)
+            self.concat_back_dim.append(concat_linear)
 
         self.norm = norm_layer(self.num_features)
         self.norm_up = norm_layer(self.embed_dim)
@@ -785,27 +782,27 @@ class SwinTransformerSys(nn.Module):
             norm="group",
             padding_mode="reflect",
         )
-        
+
         ## SE block
         if decoder == True:
-          self.se = nn.Sequential(
-            Rearrange('b (h w) c -> b c h w', h=self.features_sizes[0], w=self.features_sizes[0]),
-            SELayer(embed_dim),
-            Rearrange('b c h w -> b (h w) c')
-          )
+            self.se = nn.Sequential(
+                Rearrange('b (h w) c -> b c h w', h=self.features_sizes[0], w=self.features_sizes[0]),
+                SELayer(embed_dim),
+                Rearrange('b c h w -> b (h w) c')
+            )
 
-          if self.final_upsample == "expand_first":
-              print("---final upsample expand_first---")
-              self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
-                                            dim_scale=4, dim=embed_dim)
-              self.out_conv = nn.Sequential(
-                # Feature_aliasing(embed_dim),
-                # Feature_aliasing(embed_dim)
-                Feature_reduce(embed_dim, embed_dim // 2),
-                Feature_aliasing(embed_dim // 2)
-              )
-              self.output = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=1, bias=False)
-
+            if self.final_upsample == "expand_first":
+                print("---final upsample expand_first---")
+                self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
+                                              dim_scale=4, dim=embed_dim)
+                self.out_conv = nn.Sequential(
+                    # Feature_aliasing(embed_dim),
+                    # Feature_aliasing(embed_dim)
+                    Feature_reduce(embed_dim, embed_dim // 2),
+                    Feature_aliasing(embed_dim // 2)
+                )
+                self.output = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=1,
+                                        bias=False)
 
     # Encoder and Bottleneck
     def forward_features(self, input, batch_positions=None):
@@ -814,7 +811,7 @@ class SwinTransformerSys(nn.Module):
         x1d = input['S1D']
 
         pad_mask = (
-          (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
+            (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
         )  # BxT pad mask
 
         pad_mask_x1a = (
@@ -849,31 +846,31 @@ class SwinTransformerSys(nn.Module):
         x_downsample = []
 
         for index, layer in enumerate(self.layers):
+            x = self.concat_dims[index](x, x1a, x1d)
             x_downsample.append(x)
             x = layer(x)
             x1a = self.layers_s1a[index](x1a)
             x1d = self.layers_s1d[index](x1d)
             ## concat other modelity
-            x = self.concat_dims[index](x, x1a, x1d)
 
         x = self.norm(x)  # B L C
 
-        x = rearrange(x, '(b t) (h w) c -> b t c h w', 
-          b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
-        
+        x = rearrange(x, '(b t) (h w) c -> b t c h w',
+                      b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
+
         x, att = self.temporal_encoder(
-          x,
-          batch_positions=batch_positions, 
-          pad_mask=pad_mask
+            x,
+            batch_positions=batch_positions,
+            pad_mask=pad_mask
         )
 
         # x = rearrange(x, 'b c h w -> b (h w) c')
 
         # Reshape back to 5 dims and do temporal aggreagation
         for i, elements in enumerate(x_downsample):
-          x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
-            b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])   
-          x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
+            x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
+                                        b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
+            x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
 
         return x, x_downsample
 
@@ -888,7 +885,7 @@ class SwinTransformerSys(nn.Module):
                 x = layer_up(x)
 
         x = self.norm_up(x)  # B L C
-        
+
         return x
 
     def up_x4(self, x):
@@ -900,17 +897,17 @@ class SwinTransformerSys(nn.Module):
             x = self.up(x)
             x = x.view(B, 4 * H, 4 * W, -1)
             x = x.permute(0, 3, 1, 2)  # B,C,H,W
-            x = self.out_conv(x) # for output not like block
+            x = self.out_conv(x)  # for output not like block
             x = self.output(x)
 
         return x
 
     def forward(self, x, batch_positions=None):
-        
-        #spatial encoder
+
+        # spatial encoder
         x, x_downsample = self.forward_features(x, batch_positions)
-            
-        #decoder
+
+        # decoder
         x = self.forward_up_features(x, x_downsample)
         x = self.se(x)
         x = self.up_x4(x)
@@ -927,9 +924,7 @@ class SwinTransformerSys(nn.Module):
         return flops
 
 
-
-
-if __name__=='__main__':
+if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print('#### Test Model ###')
     x = torch.rand(4, 3, 224, 224).to(device)
