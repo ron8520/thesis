@@ -812,6 +812,10 @@ class SwinTransformerSys(nn.Module):
         x1a = input['S1A']
         x1d = input['S1D']
 
+        print(x.shape)
+        print(x1a.shape)
+        print(x1d.shape)
+
         pad_mask = (
           (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
         )  # BxT pad mask

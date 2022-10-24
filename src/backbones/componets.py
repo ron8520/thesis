@@ -163,10 +163,6 @@ class MultiSwinTransformerBlock(nn.Module):
         Ba, Na, Ca = s1a.shape
         Bd, Nd, Cd = s1d.shape
 
-        print(f"{B} {N} {C}")
-        print(f"s1a {Ba} {Na} {Ca}")
-        print(f"s1d {Bd} {Nd} {Cd}")
-
         shortcut = x
         x = x.view(B, H, W, C)
         s1a = s1a.view(Ba, H, W, Ca)
@@ -277,9 +273,6 @@ class MultiWindowAttention(nn.Module):
         B_, N, C = x.shape
         Ba_, Na, Ca = s1a.shape
         Bd_, Nd, Cd = s1d.shape
-        print()
-        print(self.dim)
-        print()
         # Sentinel-2
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
