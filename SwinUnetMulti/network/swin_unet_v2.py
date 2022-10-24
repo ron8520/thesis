@@ -856,7 +856,6 @@ class SwinTransformerSys(nn.Module):
             print(x.shape)
             print(x1a.shape)
             print(x1d.shape)
-            print()
             ## concat other modelity
             x = self.concat_dims[index](x, x1a, x1d)
 

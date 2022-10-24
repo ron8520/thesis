@@ -272,6 +272,8 @@ class MultiWindowAttention(nn.Module):
             x: input features with shape of (num_windows*B, N, C)
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
+        print(self.dim)
+        print()
         B_, N, C = x.shape
         Ba_, Na, Ca = s1a.shape
         Bd_, Nd, Cd = s1d.shape
