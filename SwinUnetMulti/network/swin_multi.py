@@ -31,79 +31,79 @@ class Swin_multi(nn.Module):
             use_checkpoint=True,
             decoder=True
         )
-        self.s1a_swin_unet = SwinTransformerSys(
-            img_size=128,
-            patch_size=4,
-            in_chans=16,
-            num_classes=20,
-            embed_dim=96,
-            depths=[2, 2, 6, 2],
-            num_heads=[3, 6, 12, 24],
-            window_size=4,
-            mlp_ratio=4.,
-            qkv_bias=True,
-            qk_scale=None,
-            drop_rate=0.0,
-            drop_path_rate=0.1,
-            ape=False,
-            patch_norm=True,
-            use_checkpoint=True,
-            decoder=False
-        )
-        self.s1d_swin_unet = SwinTransformerSys(
-            img_size=128,
-            patch_size=4,
-            in_chans=16,
-            num_classes=20,
-            embed_dim=96,
-            depths=[2, 2, 6, 2],
-            num_heads=[3, 6, 12, 24],
-            window_size=8,
-            mlp_ratio=4.,
-            qkv_bias=True,
-            qk_scale=None,
-            drop_rate=0.0,
-            drop_path_rate=0.1,
-            ape=False,
-            patch_norm=True,
-            use_checkpoint=True,
-            decoder=False
-        )
+        # self.s1a_swin_unet = SwinTransformerSys(
+        #     img_size=128,
+        #     patch_size=4,
+        #     in_chans=16,
+        #     num_classes=20,
+        #     embed_dim=96,
+        #     depths=[2, 2, 6, 2],
+        #     num_heads=[3, 6, 12, 24],
+        #     window_size=4,
+        #     mlp_ratio=4.,
+        #     qkv_bias=True,
+        #     qk_scale=None,
+        #     drop_rate=0.0,
+        #     drop_path_rate=0.1,
+        #     ape=False,
+        #     patch_norm=True,
+        #     use_checkpoint=True,
+        #     decoder=False
+        # )
+        # self.s1d_swin_unet = SwinTransformerSys(
+        #     img_size=128,
+        #     patch_size=4,
+        #     in_chans=16,
+        #     num_classes=20,
+        #     embed_dim=96,
+        #     depths=[2, 2, 6, 2],
+        #     num_heads=[3, 6, 12, 24],
+        #     window_size=8,
+        #     mlp_ratio=4.,
+        #     qkv_bias=True,
+        #     qk_scale=None,
+        #     drop_rate=0.0,
+        #     drop_path_rate=0.1,
+        #     ape=False,
+        #     patch_norm=True,
+        #     use_checkpoint=True,
+        #     decoder=False
+        # )
         self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s2_swin_unet)
-        self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1a_swin_unet)
-        self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1d_swin_unet)
-        self.dims = [96, 192, 384, 768]
-        self.bottom = MultiSwinTransformerBlock(
-                    dim=768,
-                    num_heads=16,
-                    window_size=4,
-                    mlp_ratio=4.,
-                    qkv_bias=True,
-                    qk_scale=None,
-                    drop=0.,
-                    attn_drop=0.,
-                    drop_path=0.1,
-                    act_layer=nn.GELU,
-                    norm_layer=nn.LayerNorm
-                )
-
-        self.concat_dims = nn.ModuleList()
-        for i in range(len(self.dims)):
-            self.concat_dims.append(
-                MultiSwinTransformerBlock(
-                    dim=self.dims[i],
-                    num_heads=16,
-                    window_size=4,
-                    mlp_ratio=4.,
-                    qkv_bias=True,
-                    qk_scale=None,
-                    drop=0.,
-                    attn_drop=0.,
-                    drop_path=0.1,
-                    act_layer=nn.GELU,
-                    norm_layer=nn.LayerNorm
-                )
-            )
+        # self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1a_swin_unet)
+        # self.load_from('./SwinUnet/pretrained_ckpt/swin_tiny_patch4_window7_224.pth', self.s1d_swin_unet)
+        # self.dims = [96, 192, 384, 768]
+        # self.bottom = MultiSwinTransformerBlock(
+        #             dim=768,
+        #             num_heads=16,
+        #             window_size=4,
+        #             mlp_ratio=4.,
+        #             qkv_bias=True,
+        #             qk_scale=None,
+        #             drop=0.,
+        #             attn_drop=0.,
+        #             drop_path=0.1,
+        #             act_layer=nn.GELU,
+        #             norm_layer=nn.LayerNorm
+        #         )
+        #
+        # self.concat_dims = nn.ModuleList()
+        # for i in range(len(self.dims)):
+        #     self.concat_dims.append(
+        #         MultiSwinTransformerBlock(
+        #             dim=self.dims[i],
+        #             num_heads=16,
+        #             window_size=4,
+        #             mlp_ratio=4.,
+        #             qkv_bias=True,
+        #             qk_scale=None,
+        #             drop=0.,
+        #             attn_drop=0.,
+        #             drop_path=0.1,
+        #             act_layer=nn.GELU,
+        #             norm_layer=nn.LayerNorm
+        #         )
+        #     )
 
         self.apply(self._init_weights)
 
@@ -130,18 +130,19 @@ class Swin_multi(nn.Module):
                 pass
 
     def forward(self, x, batch_positions=None):
-        s2_out, s2_downsamples = self.s2_swin_unet.forward_features(x['S2'], batch_positions['S2'])
-        s1a_out, s1a_downsamples = self.s1a_swin_unet.forward_features(x['S1A'], batch_positions['S1A'])
-        s1d_out, s1d_downsamples = self.s1d_swin_unet.forward_features(x['S1D'], batch_positions['S1D'])
-
-        x = self.bottom(s2_out, s1a_out, s1d_out)
-
-        for i, element in enumerate(s2_downsamples):
-            s2_downsamples[i] = self.concat_dims[i](s2_downsamples[i], s1a_downsamples[i], s1d_downsamples[i])
-
-        out = self.s2_swin_unet.forward_up_features(x, s2_downsamples)
-        out = self.s2_swin_unet.se(out)
-        out = self.s2_swin_unet.up_x4(out)
+        out = self.s2_swin_unet(x, batch_positions['S2'])
+        # s2_out, s2_downsamples = self.s2_swin_unet.forward_features(x['S2'], batch_positions['S2'])
+        # s1a_out, s1a_downsamples = self.s1a_swin_unet.forward_features(x['S1A'], batch_positions['S1A'])
+        # s1d_out, s1d_downsamples = self.s1d_swin_unet.forward_features(x['S1D'], batch_positions['S1D'])
+        #
+        # x = self.bottom(s2_out, s1a_out, s1d_out)
+        #
+        # for i, element in enumerate(s2_downsamples):
+        #     s2_downsamples[i] = self.concat_dims[i](s2_downsamples[i], s1a_downsamples[i], s1d_downsamples[i])
+        #
+        # out = self.s2_swin_unet.forward_up_features(x, s2_downsamples)
+        # out = self.s2_swin_unet.se(out)
+        # out = self.s2_swin_unet.up_x4(out)
 
         return out
 
