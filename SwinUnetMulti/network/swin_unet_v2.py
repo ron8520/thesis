@@ -702,7 +702,8 @@ class SwinTransformerSys(nn.Module):
         for i_layer in range(self.num_layers):
             self.concat_dims.append(
                 MultiSwinTransformerBlock(
-                    dim=int(embed_dim * 2 ** (i_layer + 1)),
+                    dim=int(embed_dim * 2 ** (i_layer + 1))
+                        if i_layer != (self.num_layers - 1) else int(embed_dim * 2 ** i_layer),
                     num_heads=16,
                     window_size=4,
                     mlp_ratio=4.,
@@ -852,10 +853,6 @@ class SwinTransformerSys(nn.Module):
             x = layer(x)
             x1a = self.layers_s1a[index](x1a)
             x1d = self.layers_s1d[index](x1d)
-            print(f"{index}: -----")
-            print(x.shape)
-            print(x1a.shape)
-            print(x1d.shape)
             ## concat other modelity
             x = self.concat_dims[index](x, x1a, x1d)
 
