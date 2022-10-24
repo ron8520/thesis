@@ -907,6 +907,11 @@ class SwinTransformerSys(nn.Module):
         # spatial encoder
         x, x_downsample = self.forward_features(x, batch_positions)
 
+        print(x.shape)
+        print()
+        for i in x_downsample:
+            print(i.shape)
+
         # decoder
         x = self.forward_up_features(x, x_downsample)
         x = self.se(x)
