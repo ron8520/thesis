@@ -284,14 +284,11 @@ class MultiWindowAttention(nn.Module):
 
         conv_branch = rearrange(x, "b (h w) c -> b c h w", h=int(math.sqrt(N)), w=int(math.sqrt(N)))
         conv_out = self.dwconv(conv_branch)
-        conv_out = rearrange(conv_out, 'b c h w -> b (h w) c')
+        conv_out = rearrange(conv_out, 'b (c h1) h w -> b (h w) c h1', h1=self.num_heads, c=C//self.num_heads)
 
         # Sentinel-2
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
-
-        print(f"print out v shape: {v.shape}")
-        print(f"print out conv out shape {conv_out.shape}")
 
         # Sentinel-1a
         qkv_a = self.qkv_a(s1a).reshape(Ba_, Na, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
