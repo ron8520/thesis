@@ -165,6 +165,9 @@ class MultiSwinTransformerBlock(nn.Module):
         Bd, Nd, Cd = s1d.shape
 
         shortcut = x
+        x = x.view(B, H, W, C)
+        s1a = s1a.view(Ba, H, W, Ca)
+        s1d = s1d.view(Bd, H, W, Cd)
 
         shifted_x = x
 
