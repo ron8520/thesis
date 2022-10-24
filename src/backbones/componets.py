@@ -158,11 +158,13 @@ class MultiSwinTransformerBlock(nn.Module):
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x, s1a, s1d):
-        B, C, H, W = x.shape
-        Ba, Ca, Ha, Wa = s1a.shape
-        Bd, Cd, Hd, Wd = s1d.shape
 
-        shortcut = rearrange(x, 'b c h w -> b (h w) c', b=B, c=C, h=H, w=W)
+        B, N, C = x.shape
+        H, W = math.sqrt(N)
+        Ba, Na, Ca = s1a.shape
+        Bd, Nd, Cd = s1d.shape
+
+        shortcut = x
 
         shifted_x = x
 
