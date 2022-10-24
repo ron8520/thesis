@@ -702,7 +702,7 @@ class SwinTransformerSys(nn.Module):
         for i_layer in range(self.num_layers):
             self.concat_dims.append(
                 MultiSwinTransformerBlock(
-                    dim=int(embed_dim * 2 ** i_layer),
+                    dim=int(embed_dim * 2 ** (i_layer + 1)),
                     num_heads=16,
                     window_size=4,
                     mlp_ratio=4.,
