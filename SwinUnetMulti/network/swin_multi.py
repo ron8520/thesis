@@ -15,12 +15,12 @@ class Swin_multi(nn.Module):
         self.s2_swin_unet = SwinTransformerSys(
             img_size=128,
             patch_size=4,
-            in_chans=64,
+            in_chans=96,
             num_classes=20,
             embed_dim=96,
             depths=[2, 2, 6, 2],
             num_heads=[3, 6, 12, 24],
-            window_size=8,
+            window_size=4,
             mlp_ratio=4.,
             qkv_bias=True,
             qk_scale=None,
@@ -39,7 +39,7 @@ class Swin_multi(nn.Module):
             embed_dim=96,
             depths=[2, 2, 6, 2],
             num_heads=[3, 6, 12, 24],
-            window_size=8,
+            window_size=4,
             mlp_ratio=4.,
             qkv_bias=True,
             qk_scale=None,
@@ -310,7 +310,13 @@ class MultiWindowAttention(nn.Module):
 
         self.tau = nn.Parameter(torch.ones((num_heads, window_size[0] * window_size[1],
                                             window_size[0] * window_size[1])))
-        self.conv = Feature_reduce(2 * dim, dim)
+        self.conv = nn.Sequential(
+            nn.Linear(2 * dim, dim, bias=True),
+            nn.GELU(),
+            nn.LayerNorm(dim),
+            nn.Linear(dim, dim, bias=True),
+            nn.Dropout(proj_drop)
+        )
 
     def get_continuous_relative_position_bias(self, N):
         # The continuous position bias approach adopts a small meta network on the relative coordinates
@@ -376,18 +382,3 @@ class MultiWindowAttention(nn.Module):
 
         return x
 
-    def extra_repr(self) -> str:
-        return f'dim={self.dim}, window_size={self.window_size}, num_heads={self.num_heads}'
-
-    def flops(self, N):
-        # calculate flops for 1 window with token length of N
-        flops = 0
-        # qkv = self.qkv(x)
-        flops += N * self.dim * 3 * self.dim
-        # attn = (q @ k.transpose(-2, -1))
-        flops += self.num_heads * N * (self.dim // self.num_heads) * N
-        #  x = (attn @ v)
-        flops += self.num_heads * N * N * (self.dim // self.num_heads)
-        # x = self.proj(x)
-        flops += N * self.dim * self.dim
-        return flops

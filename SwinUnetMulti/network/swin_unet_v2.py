@@ -4,6 +4,8 @@ import torch.utils.checkpoint as checkpoint
 from einops import rearrange, reduce
 from einops.layers.torch import Rearrange
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+
+from SwinUnetMulti.network.swin_multi import MultiSwinTransformerBlock
 from src.backbones.ltae import LTAE2d
 from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
@@ -208,7 +210,7 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, cnn=False):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -256,8 +258,7 @@ class SwinTransformerBlock(nn.Module):
             attn_mask = None
 
         self.register_buffer("attn_mask", attn_mask)
-        # Use CNN for local feature, Borrow from ViTAE
-        self.cnn = cnn
+
 
 
     def forward(self, x):
@@ -445,7 +446,7 @@ class BasicLayer(nn.Module):
 
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,):
 
         super().__init__()
         self.dim = dim
@@ -462,8 +463,7 @@ class BasicLayer(nn.Module):
                                  qkv_bias=qkv_bias, qk_scale=qk_scale,
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer,
-                                 cnn = True if i == (depth - 1) else False
+                                 norm_layer=norm_layer
                                  )
             for i in range(depth)])
 
@@ -479,8 +479,10 @@ class BasicLayer(nn.Module):
                 x = checkpoint.checkpoint(blk, x)
             else:
                 x = blk(x)
+
         if self.downsample is not None:
             x = self.downsample(x)
+
         return x
 
     def extra_repr(self) -> str:
@@ -601,30 +603,6 @@ class PatchEmbed(nn.Module):
 
 
 class SwinTransformerSys(nn.Module):
-    r""" Swin Transformer
-        A PyTorch impl of : `Swin Transformer: Hierarchical Vision Transformer using Shifted Windows`  -
-          https://arxiv.org/pdf/2103.14030
-    Args:
-        img_size (int | tuple(int)): Input image size. Default 224
-        patch_size (int | tuple(int)): Patch size. Default: 4
-        in_chans (int): Number of input image channels. Default: 3
-        num_classes (int): Number of classes for classification head. Default: 1000
-        embed_dim (int): Patch embedding dimension. Default: 96
-        depths (tuple(int)): Depth of each Swin Transformer layer.
-        num_heads (tuple(int)): Number of attention heads in different layers.
-        window_size (int): Window size. Default: 7
-        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim. Default: 4
-        qkv_bias (bool): If True, add a learnable bias to query, key, value. Default: True
-        qk_scale (float): Override default qk scale of head_dim ** -0.5 if set. Default: None
-        drop_rate (float): Dropout rate. Default: 0
-        attn_drop_rate (float): Attention dropout rate. Default: 0
-        drop_path_rate (float): Stochastic depth rate. Default: 0.1
-        norm_layer (nn.Module): Normalization layer. Default: nn.LayerNorm.
-        ape (bool): If True, add absolute position embedding to the patch embedding. Default: False
-        patch_norm (bool): If True, add normalization after patch embedding. Default: True
-        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
-    """
-
     def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
                  embed_dim=96, depths=[2, 2, 2, 2], depths_decoder=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
@@ -632,11 +610,6 @@ class SwinTransformerSys(nn.Module):
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
                  use_checkpoint=False, final_upsample="expand_first", decoder=True, **kwargs):
         super().__init__()
-
-        print(
-            "SwinTransformerSys expand initial----depths:{};depths_decoder:{};drop_path_rate:{};num_classes:{}".format(
-                depths,
-                depths_decoder, drop_path_rate, num_classes))
 
         self.num_classes = num_classes
         self.num_layers = len(depths)
@@ -655,6 +628,14 @@ class SwinTransformerSys(nn.Module):
         num_patches = self.patch_embed.num_patches
         patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
+
+        self.patch_embed_s1a = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
+            norm_layer=norm_layer if self.patch_norm else None)
+
+        self.patch_embed_s1d = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
+            norm_layer=norm_layer if self.patch_norm else None)
 
         # absolute position embedding
         if self.ape:
@@ -681,8 +662,66 @@ class SwinTransformerSys(nn.Module):
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
                                downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsample_s1a=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsamle_s1d=PatchMerging if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint)
             self.layers.append(layer)
+
+        self.layers_s1a = nn.ModuleList()
+        for i_layer in range(self.num_layers):
+            layer = BasicLayer(dim=int(embed_dim * 2 ** i_layer),
+                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer)),
+                               depth=depths[i_layer],
+                               num_heads=num_heads[i_layer],
+                               window_size=window_size,
+                               mlp_ratio=self.mlp_ratio,
+                               qkv_bias=qkv_bias, qk_scale=qk_scale,
+                               drop=drop_rate, attn_drop=attn_drop_rate,
+                               drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                               norm_layer=norm_layer,
+                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsample_s1a=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsamle_s1d=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               use_checkpoint=use_checkpoint)
+            self.layers_s1a.append(layer)
+
+        self.layers_s1d = nn.ModuleList()
+        for i_layer in range(self.num_layers):
+            layer = BasicLayer(dim=int(embed_dim * 2 ** i_layer),
+                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer)),
+                               depth=depths[i_layer],
+                               num_heads=num_heads[i_layer],
+                               window_size=window_size,
+                               mlp_ratio=self.mlp_ratio,
+                               qkv_bias=qkv_bias, qk_scale=qk_scale,
+                               drop=drop_rate, attn_drop=attn_drop_rate,
+                               drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                               norm_layer=norm_layer,
+                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsample_s1a=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsamle_s1d=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               use_checkpoint=use_checkpoint)
+            self.layers_s1d.append(layer)
+
+        self.concat_dims = nn.ModuleList()
+        for i in range(self.num_layers):
+            self.concat_dims.append(
+                MultiSwinTransformerBlock(
+                    dim=int(embed_dim * 2 ** i_layer),
+                    num_heads=16,
+                    window_size=4,
+                    mlp_ratio=4.,
+                    qkv_bias=True,
+                    qk_scale=None,
+                    drop=drop_rate,
+                    attn_drop=attn_drop_rate,
+                    drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                    act_layer=nn.GELU,
+                    norm_layer=nn.LayerNorm
+                )
+            )
 
         # build decoder layers
         if decoder == True:
@@ -722,18 +761,32 @@ class SwinTransformerSys(nn.Module):
         ## temporal attention
         self.temporal_encoder = LTAE2d(
             in_channels=768,
-            d_model=256,
+            d_model=768,
             n_head=16,
-            mlp=[256, 768],
+            mlp=[768, 768],
             return_att=True,
-            d_k=8,
+            d_k=768 // 16,
         )
 
         self.temporal_aggregator = Temporal_Aggregator(mode="att_group")
         self.pad_value = 0
         self.features_sizes = [32, 16, 8, 4]
         self.in_conv = ConvBlock(
-            nkernels=[10, 64, 64] if in_chans == 64 else [3, 16, 16],
+            nkernels=[10, 96, 96],
+            pad_value=0,
+            norm="group",
+            padding_mode="reflect",
+        )
+
+        self.in_conv_s1a = ConvBlock(
+            nkernels=[3, 96, 96],
+            pad_value=0,
+            norm="group",
+            padding_mode="reflect",
+        )
+
+        self.in_conv_s1d = ConvBlock(
+            nkernels=[3, 96, 96],
             pad_value=0,
             norm="group",
             padding_mode="reflect",
@@ -760,34 +813,55 @@ class SwinTransformerSys(nn.Module):
               self.output = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=1, bias=False)
 
 
-    # @torch.jit.ignore
-    # def no_weight_decay(self):
-    #     return {'absolute_pos_embed'}
-    #
-    # @torch.jit.ignore
-    # def no_weight_decay_keywords(self):
-    #     return {'relative_position_bias_table'}
-
     # Encoder and Bottleneck
-    def forward_features(self, x, batch_positions=None):
+    def forward_features(self, input, batch_positions=None):
+        x = input['S2']
+        x1a = input['S1A']
+        x1d = input['S1D']
+
         pad_mask = (
           (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
         )  # BxT pad mask
-        
+
+        pad_mask_x1a = (
+            (x1a == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
+        )
+
+        pad_mask_x1d = (
+            (x1d == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
+        )
+
         B, T, C, H, W = x.shape
         x = self.in_conv.smart_forward(x)
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
-        
+        Ba, Ta, Ca, Ha, Wa = x1a.shape
+        x1a = self.in_conv.smart_forward(x1a)
+        x1a = rearrange(x1a, 'b t c h w -> (b t) c h w')
+
+        Bd, Td, Cd, Hd, Wd = x1a.shape
+        x1d = self.in_conv.smart_forward(x1d)
+        x1d = rearrange(x1d, 'b t c h w -> (b t) c h w')
+
         x = self.patch_embed(x)
-        if self.ape:
-            x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
+
+        x1a = self.patch_embed(x1a)
+        x1a = self.pos_drop(x1a)
+
+        x1d = self.patch_embed(x1d)
+        x1d = self.pos_drop(x1d)
+
         x_downsample = []
 
-        for layer in self.layers:
+        for index, layer in enumerate(self.layers):
             x_downsample.append(x)
             x = layer(x)
+            x1a = self.layers_s1a[index](x1a)
+            x1d = self.layers_s1d[index](x1d)
+
+            ## concat other modelity
+            x = self.concat_dims[index](x, x1a, x1d)
 
         x = self.norm(x)  # B L C
 
