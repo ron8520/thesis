@@ -158,11 +158,14 @@ class MultiSwinTransformerBlock(nn.Module):
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x, s1a, s1d):
-
         B, N, C = x.shape
         H, W = int(math.sqrt(N)), int(math.sqrt(N))
         Ba, Na, Ca = s1a.shape
         Bd, Nd, Cd = s1d.shape
+
+        print(f"{N} {C}")
+        print(f"s1a {Na} {Ca}")
+        print(f"s1d {Nd} {Cd}")
 
         shortcut = x
         x = x.view(B, H, W, C)
