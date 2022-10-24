@@ -252,10 +252,12 @@ class MultiWindowAttention(nn.Module):
         self.tau = nn.Parameter(torch.ones((num_heads, window_size[0] * window_size[1],
                                             window_size[0] * window_size[1])))
         self.conv = nn.Sequential(
-            nn.Linear(2 * dim, dim, bias=True),
+            nn.Conv2d(2 * dim, dim, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(dim),
             nn.GELU(),
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim, bias=True),
+            nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(dim),
+            nn.GELU(),
             nn.Dropout(proj_drop)
         )
 
@@ -317,7 +319,5 @@ class MultiWindowAttention(nn.Module):
                       h=int(math.sqrt(N)), w=int(math.sqrt(N)))
         x = self.conv(x)
         x = rearrange(x, 'b c h w -> b (h w) c')
-        x = self.proj(x)
-        x = self.proj_drop(x)
 
         return x
