@@ -864,13 +864,14 @@ class SwinTransformerSys(nn.Module):
             pad_mask=pad_mask
         )
 
-        # x = rearrange(x, 'b c h w -> b (h w) c')
+        x = rearrange(x, 'b c h w -> b (h w) c')
 
         # Reshape back to 5 dims and do temporal aggreagation
         for i, elements in enumerate(x_downsample):
             x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
                                         b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
             x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
+            x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')
 
         return x, x_downsample
 
@@ -906,11 +907,6 @@ class SwinTransformerSys(nn.Module):
 
         # spatial encoder
         x, x_downsample = self.forward_features(x, batch_positions)
-
-        print(x.shape)
-        print()
-        for i in x_downsample:
-            print(i.shape)
 
         # decoder
         x = self.forward_up_features(x, x_downsample)
