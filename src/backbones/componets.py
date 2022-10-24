@@ -284,7 +284,7 @@ class MultiWindowAttention(nn.Module):
 
         conv_branch = rearrange(x, "b (h w) c -> b c h w", h=int(math.sqrt(N)), w=int(math.sqrt(N)))
         conv_out = self.dwconv(conv_branch)
-        conv_out = rearrange(conv_out, 'b (c h1) h w -> b (h w) c h1', h1=self.num_heads, c=C//self.num_heads)
+        conv_out = rearrange(conv_out, 'b (c h1) h w -> b (h w) h1 c', h1=self.num_heads, c=C//self.num_heads)
 
         # Sentinel-2
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
