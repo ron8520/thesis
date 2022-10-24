@@ -710,7 +710,7 @@ class SwinTransformerSys(nn.Module):
                     qk_scale=None,
                     drop=drop_rate,
                     attn_drop=attn_drop_rate,
-                    drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                    drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])][0],
                     act_layer=nn.GELU,
                     norm_layer=nn.LayerNorm
                 )
