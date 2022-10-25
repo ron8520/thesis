@@ -709,7 +709,8 @@ class SwinTransformerSys(nn.Module):
                     qk_scale=None,
                     drop=drop_rate,
                     attn_drop=attn_drop_rate,
-                    drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])][0],
+                    drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])][0] if i_layer != self.num_layers else
+                    dpr[sum(depths[:(i_layer - 1)]):sum(depths[:(i_layer - 1) + 1])][0],
                     act_layer=nn.GELU,
                     norm_layer=nn.LayerNorm
                 )
@@ -746,11 +747,89 @@ class SwinTransformerSys(nn.Module):
             self.layers_up.append(layer_up)
             self.concat_back_dim.append(concat_linear)
 
+        self.layers_up_x1a = nn.ModuleList()
+        self.concat_back_dim_x1a = nn.ModuleList()
+        for i_layer in range(self.num_layers):
+            concat_linear = nn.Linear(2 * int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
+                                      int(embed_dim * 2 ** (
+                                              self.num_layers - 1 - i_layer))) if i_layer > 0 else nn.Identity()
+            if i_layer == 0:
+                layer_up = PatchExpand(
+                    input_resolution=(patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                                      patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
+                    dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)), dim_scale=2, norm_layer=norm_layer)
+            else:
+                layer_up = BasicLayer_up(dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
+                                         input_resolution=(
+                                             patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                                             patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
+                                         depth=depths[(self.num_layers - 1 - i_layer)],
+                                         num_heads=num_heads[(self.num_layers - 1 - i_layer)],
+                                         window_size=window_size,
+                                         mlp_ratio=self.mlp_ratio,
+                                         qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                         drop=drop_rate, attn_drop=attn_drop_rate,
+                                         drop_path=dpr[sum(depths[:(self.num_layers - 1 - i_layer)]):sum(
+                                             depths[:(self.num_layers - 1 - i_layer) + 1])],
+                                         norm_layer=norm_layer,
+                                         upsample=PatchExpand if (i_layer < self.num_layers - 1) else None,
+                                         use_checkpoint=use_checkpoint)
+            self.layers_up_x1a.append(layer_up)
+            self.concat_back_dim_x1a.append(concat_linear)
+
+        self.layers_up_x1d = nn.ModuleList()
+        self.concat_back_dim_x1d = nn.ModuleList()
+        for i_layer in range(self.num_layers):
+            concat_linear = nn.Linear(2 * int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
+                                      int(embed_dim * 2 ** (
+                                              self.num_layers - 1 - i_layer))) if i_layer > 0 else nn.Identity()
+            if i_layer == 0:
+                layer_up = PatchExpand(
+                    input_resolution=(patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                                      patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
+                    dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)), dim_scale=2, norm_layer=norm_layer)
+            else:
+                layer_up = BasicLayer_up(dim=int(embed_dim * 2 ** (self.num_layers - 1 - i_layer)),
+                                         input_resolution=(
+                                             patches_resolution[0] // (2 ** (self.num_layers - 1 - i_layer)),
+                                             patches_resolution[1] // (2 ** (self.num_layers - 1 - i_layer))),
+                                         depth=depths[(self.num_layers - 1 - i_layer)],
+                                         num_heads=num_heads[(self.num_layers - 1 - i_layer)],
+                                         window_size=window_size,
+                                         mlp_ratio=self.mlp_ratio,
+                                         qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                         drop=drop_rate, attn_drop=attn_drop_rate,
+                                         drop_path=dpr[sum(depths[:(self.num_layers - 1 - i_layer)]):sum(
+                                             depths[:(self.num_layers - 1 - i_layer) + 1])],
+                                         norm_layer=norm_layer,
+                                         upsample=PatchExpand if (i_layer < self.num_layers - 1) else None,
+                                         use_checkpoint=use_checkpoint)
+            self.layers_up_x1d.append(layer_up)
+            self.concat_back_dim_x1d.append(concat_linear)
+
         self.norm = norm_layer(self.num_features)
         self.norm_up = norm_layer(self.embed_dim)
 
         ## temporal attention
         self.temporal_encoder = LTAE2d(
+            in_channels=768,
+            d_model=768,
+            n_head=16,
+            mlp=[768, 768],
+            return_att=True,
+            d_k=768 // 16,
+        )
+
+        self.temporal_encoder_x1a = LTAE2d(
+            in_channels=768,
+            d_model=768,
+            n_head=16,
+            mlp=[768, 768],
+            return_att=True,
+            d_k=768 // 16,
+        )
+
+        self.temporal_encoder_x1d = LTAE2d(
             in_channels=768,
             d_model=768,
             n_head=16,
@@ -787,6 +866,12 @@ class SwinTransformerSys(nn.Module):
         if decoder == True:
             self.se = nn.Sequential(
                 Rearrange('b (h w) c -> b c h w', h=self.features_sizes[0], w=self.features_sizes[0]),
+                nn.Conv2d(3 * embed_dim, embed_dim, kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm2d(embed_dim),
+                nn.GELU(),
+                nn.Conv2d(embed_dim, embed_dim, kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm2d(embed_dim),
+                nn.GELU(),
                 SELayer(embed_dim),
                 Rearrange('b c h w -> b (h w) c')
             )
@@ -863,10 +948,17 @@ class SwinTransformerSys(nn.Module):
         x1a = self.norm(x1a)
         x1d = self.norm(x1d)
 
+        # Concat last stage
         x = self.concat_dims[-1](x, x1a, x1d)
 
         x = rearrange(x, '(b t) (h w) c -> b t c h w',
                       b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
+
+        x1a = rearrange(x1a, '(b t) (h w) c -> b t c h w',
+                        b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
+
+        x1d = rearrange(x1d, '(b t) (h w) c -> b t c h w',
+                        b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
 
         x, att = self.temporal_encoder(
             x,
@@ -874,30 +966,67 @@ class SwinTransformerSys(nn.Module):
             pad_mask=pad_mask
         )
 
+        x1a, attn_x1a = self.temporal_encoder_x1a(
+            x1a,
+            batch_positions=batch_positions,
+            pad_mask=pad_mask_x1a
+        )
+
+        x1d, attn_x1d = self.temporal_encoder_x1d(
+            x1d,
+            batch_positions=batch_positions,
+            pad_mask=pad_mask_x1d
+        )
+
         x = rearrange(x, 'b c h w -> b (h w) c')
 
-        # Reshape back to 5 dims and do temporal aggreagation
+        x1a = rearrange(x1a, 'b c h w -> b (h w) c')
+
+        x1d = rearrange(x1d, 'b c h w -> b (h w) c')
+
+        # Reshape back to 5 dims and do temporal aggregation
         for i, elements in enumerate(x_downsample):
             x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
                                         b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
             x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
             x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')
 
-        return x, x_downsample
+            x1a_downsample[i] = rearrange(x1a_downsample[i], '(b t) (h w) c -> b t c h w',
+                                          b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
+            x1a_downsample[i] = self.temporal_aggregator(x1a_downsample[i], pad_mask=pad_mask_x1a, attn_mask=attn_x1a)
+            x1a_downsample[i] = rearrange(x1a_downsample[i], 'b c h w -> b (h w) c')
 
-    # Dencoder and Skip connection
-    def forward_up_features(self, x, x_downsample):
+            x1d_downsample[i] = rearrange(x1d_downsample[i], '(b t) (h w) c -> b t c h w',
+                                          b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
+            x1d_downsample[i] = self.temporal_aggregator(x1d_downsample[i], pad_mask=pad_mask_x1d, attn_mask=attn_x1d)
+            x1d_downsample[i] = rearrange(x1d_downsample[i], 'b c h w -> b (h w) c')
+
+        return x, x1a, x1d, x_downsample, x1a_downsample, x1d_downsample
+
+    # Decoder and Skip connection
+    def forward_up_features(self, x, x1a, x1d, x_downsample, x1a_downsample, x1d_downsample):
         for inx, layer_up in enumerate(self.layers_up):
             if inx == 0:
                 x = layer_up(x)
+                x1a = self.layers_up_x1a[inx](x1a)
+                x1d = self.layers_up_x1d[inx](x1d)
             else:
                 x = torch.cat([x, x_downsample[(len(x_downsample) - 1) - inx]], -1)
                 x = self.concat_back_dim[inx](x)
                 x = layer_up(x)
 
-        x = self.norm_up(x)  # B L C
+                x1a = torch.cat([x1a, x1a_downsample[(len(x_downsample) - 1) - inx]], -1)
+                x1a = self.concat_back_dim_x1a[inx](x1a)
+                x1a = self.layers_up_x1a[inx](x1a)
 
-        return x
+                x1d = torch.cat([x1d, x1d_downsample[(len(x_downsample) - 1) - inx]], -1)
+                x1d = self.concat_back_dim_x1d[inx](x1d)
+                x1d = self.layers_up_x1d[inx](x1d)
+
+        x = self.norm_up(x)  # B L C
+        x1a = self.norm_up(x1a)
+        x1d = self.norm_up(x1d)
+        return x, x1a, x1d
 
     def up_x4(self, x):
         H, W = self.patches_resolution
@@ -916,10 +1045,15 @@ class SwinTransformerSys(nn.Module):
     def forward(self, x, batch_positions=None):
 
         # spatial encoder
-        x, x_downsample = self.forward_features(x, batch_positions)
+        x, x1a, x1d, x_downsample, \
+            x1a_downsample, x1d_downsample = self.forward_features(x, batch_positions)
 
         # decoder
-        x = self.forward_up_features(x, x_downsample)
+        x, x1a, x1d = self.forward_up_features(x, x1a, x1d, x_downsample, x1a_downsample, x1d_downsample)
+
+        # Decoder concat
+        x = torch.cat([x, x1a, x1d], dim=-1)
+
         x = self.se(x)
         x = self.up_x4(x)
 
