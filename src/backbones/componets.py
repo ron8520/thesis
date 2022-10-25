@@ -27,6 +27,7 @@ class Mlp(nn.Module):
         x = self.drop(x)
         return x
 
+
 def window_partition(x, window_size):
     """
     Args:
@@ -73,13 +74,17 @@ class Mlp_Relu(nn.Module):
         x = self.fc2(x)
         x = self.dropout(x)
         return x
+
+
 class GroupNorm(nn.GroupNorm):
     """
     Group Normalization with 1 group.
     Input: tensor in shape [B, C, H, W]
     """
+
     def __init__(self, num_channels, **kwargs):
         super().__init__(1, num_channels, **kwargs)
+
 
 class Feature_aliasing(nn.Module):
 
@@ -95,6 +100,7 @@ class Feature_aliasing(nn.Module):
         x = self.norm(x)
         return self.act(x)
 
+
 class Feature_reduce(nn.Module):
 
     def __init__(self, in_channels, out_channels):
@@ -107,6 +113,7 @@ class Feature_reduce(nn.Module):
         x = self.conv(x)
         x = self.norm(x)
         return self.act(x)
+
 
 class Prediction_head(nn.Module):
 
@@ -255,6 +262,9 @@ class MultiWindowAttention(nn.Module):
 
         self.tau = nn.Parameter(torch.ones((num_heads, window_size[0] * window_size[1],
                                             window_size[0] * window_size[1])))
+
+        self.tau_2d = nn.Parameter(torch.ones((num_heads, window_size[0] * window_size[1],
+                                               window_size[0] * window_size[1])))
         self.conv = nn.Sequential(
             nn.Conv2d(2 * dim, dim, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(dim),
@@ -284,7 +294,7 @@ class MultiWindowAttention(nn.Module):
 
         conv_branch = rearrange(x, "b (h w) c -> b c h w", h=int(math.sqrt(N)), w=int(math.sqrt(N)))
         conv_out = self.dwconv(conv_branch)
-        conv_out = rearrange(conv_out, 'b (c h1) h w -> b (h w) h1 c', h1=self.num_heads, c=C//self.num_heads)
+        conv_out = rearrange(conv_out, 'b (c h1) h w -> b (h w) h1 c', h1=self.num_heads, c=C // self.num_heads)
 
         # Sentinel-2
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -319,7 +329,7 @@ class MultiWindowAttention(nn.Module):
         attn_2d = torch.einsum("bhqd, bhkd -> bhqk", q, kd) / torch.maximum(
             torch.norm(q, dim=-1, keepdim=True) * torch.norm(kd, dim=-1, keepdim=True).transpose(-2, -1),
             torch.tensor(1e-06, device=q.device, dtype=q.dtype))
-        attn_2d = attn_2d / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
+        attn_2d = attn_2d / torch.clip(self.tau_2d[:, :N, :N].unsqueeze(0), min=0.01)
 
         attn_2d = attn_2d + relative_position_bias.unsqueeze(0)
         attn_2d = self.softmax(attn_2d)
