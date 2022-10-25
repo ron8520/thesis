@@ -865,12 +865,12 @@ class SwinTransformerSys(nn.Module):
         ## SE block
         self.se = nn.Sequential(
             Rearrange('b (h w) c -> b c h w', h=self.features_sizes[0], w=self.features_sizes[0]),
-            nn.Conv2d(3 * embed_dim, embed_dim, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(embed_dim),
-            nn.GELU(),
-            nn.Conv2d(embed_dim, embed_dim, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(embed_dim),
-            nn.GELU(),
+            # nn.Conv2d(3 * embed_dim, embed_dim, kernel_size=3, stride=1, padding=1),
+            # nn.BatchNorm2d(embed_dim),
+            # nn.GELU(),
+            # nn.Conv2d(embed_dim, embed_dim, kernel_size=3, stride=1, padding=1),
+            # nn.BatchNorm2d(embed_dim),
+            # nn.GELU(),
             SELayer(embed_dim),
             Rearrange('b c h w -> b (h w) c')
         )
@@ -1103,7 +1103,7 @@ class SwinTransformerSys(nn.Module):
         x, x1a, x1d = self.forward_up_features(x, x1a, x1d, x_downsample, x1a_downsample, x1d_downsample)
 
         # Decoder concat
-        x = torch.cat([x, x1a, x1d], dim=-1)
+        # x = torch.cat([x, x1a, x1d], dim=-1)
 
         x = self.se(x)
         x = self.up_x4(x)
