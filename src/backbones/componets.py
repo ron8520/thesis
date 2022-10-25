@@ -87,7 +87,7 @@ class Feature_aliasing(nn.Module):
         super().__init__()
 
         self.conv = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
-        self.norm = GroupNorm(in_channels)
+        self.norm = nn.BatchNorm2d(in_channels)
         self.act = nn.GELU()
 
     def forward(self, x):
@@ -100,7 +100,7 @@ class Feature_reduce(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
-        self.norm = GroupNorm(out_channels)
+        self.norm = nn.BatchNorm2d(out_channels)
         self.act = nn.GELU()
 
     def forward(self, x):

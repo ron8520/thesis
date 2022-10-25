@@ -697,11 +697,11 @@ class SwinTransformerSys(nn.Module):
             self.layers_s1d.append(layer)
 
         self.concat_dims = nn.ModuleList()
-        for i_layer in range(self.num_layers):
+        for i_layer in range(self.num_layers + 1):
             self.concat_dims.append(
                 MultiSwinTransformerBlock(
-                    dim=int(embed_dim * 2 ** i_layer),
-                    # if i_layer != (self.num_layers - 1) else int(embed_dim * 2 ** i_layer),
+                    dim=int(embed_dim * 2 ** i_layer) if i_layer != self.num_layers else
+                    int(embed_dim * 2 ** (i_layer - 1)),
                     num_heads=16,
                     window_size=4,
                     mlp_ratio=4.,
@@ -844,16 +844,26 @@ class SwinTransformerSys(nn.Module):
         x1d = self.pos_drop(x1d)
 
         x_downsample = []
+        x1a_downsample = []
+        x1d_downsample = []
 
         for index, layer in enumerate(self.layers):
+            ## concat other modelity
             x = self.concat_dims[index](x, x1a, x1d)
+
             x_downsample.append(x)
+            x1a_downsample.append(x1a)
+            x1d_downsample.append(x1d)
+
             x = layer(x)
             x1a = self.layers_s1a[index](x1a)
             x1d = self.layers_s1d[index](x1d)
-            ## concat other modelity
 
         x = self.norm(x)  # B L C
+        x1a = self.norm(x1a)
+        x1d = self.norm(x1d)
+
+        x = self.concat_dims[-1](x, x1a, x1d)
 
         x = rearrange(x, '(b t) (h w) c -> b t c h w',
                       b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
