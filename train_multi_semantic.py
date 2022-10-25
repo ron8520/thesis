@@ -127,6 +127,12 @@ parser.add_argument(
     type=int,
     help="Do validation only after that many epochs.",
 )
+parser.add_argument(
+    "auxiliary_weight",
+    default=0.5,
+    type=float,
+    help="Auxiliary learning loss weight"
+)
 
 list_args = ["encoder_widths", "decoder_widths", "out_conv"]
 parser.set_defaults(cache=False)
@@ -151,12 +157,17 @@ def iterate(
 
         if mode != "train":
             with torch.no_grad():
-                out = model(x, batch_positions=dates)
+                out, out_s1a, out_s1d = model(x, batch_positions=dates)
         else:
             optimizer.zero_grad()
-            out = model(x, batch_positions=dates)
+            out, out_s1a, out_s1d = model(x, batch_positions=dates)
 
         loss = criterion(out, y)
+        loss_s1a = criterion(out_s1a, y)
+        loss_s1d = criterion(out_s1d, y)
+
+        loss = loss + loss_s1a * config.auxiliary_weight + loss_s1d * config.auxiliary_weight
+
         if mode == "train":
             loss.backward()
             optimizer.step()

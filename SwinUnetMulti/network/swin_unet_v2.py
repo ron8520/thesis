@@ -863,30 +863,53 @@ class SwinTransformerSys(nn.Module):
         )
 
         ## SE block
-        if decoder == True:
-            self.se = nn.Sequential(
-                Rearrange('b (h w) c -> b c h w', h=self.features_sizes[0], w=self.features_sizes[0]),
-                nn.Conv2d(3 * embed_dim, embed_dim, kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(embed_dim),
-                nn.GELU(),
-                nn.Conv2d(embed_dim, embed_dim, kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(embed_dim),
-                nn.GELU(),
-                SELayer(embed_dim),
-                Rearrange('b c h w -> b (h w) c')
+        self.se = nn.Sequential(
+            Rearrange('b (h w) c -> b c h w', h=self.features_sizes[0], w=self.features_sizes[0]),
+            nn.Conv2d(3 * embed_dim, embed_dim, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(embed_dim),
+            nn.GELU(),
+            nn.Conv2d(embed_dim, embed_dim, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(embed_dim),
+            nn.GELU(),
+            SELayer(embed_dim),
+            Rearrange('b c h w -> b (h w) c')
+        )
+
+        if self.final_upsample == "expand_first":
+            print("---final upsample expand_first---")
+            self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
+                                          dim_scale=4, dim=embed_dim)
+            self.up_x1a = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
+                                              dim_scale=4, dim=embed_dim)
+            self.up_x1d = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
+                                              dim_scale=4, dim=embed_dim)
+            self.out_conv = nn.Sequential(
+                # Feature_aliasing(embed_dim),
+                # Feature_aliasing(embed_dim)
+                Feature_reduce(embed_dim, embed_dim // 2),
+                Feature_aliasing(embed_dim // 2)
+            )
+            self.out_conv_x1a = nn.Sequential(
+                # Feature_aliasing(embed_dim),
+                # Feature_aliasing(embed_dim)
+                Feature_reduce(embed_dim, embed_dim // 2),
+                Feature_aliasing(embed_dim // 2)
             )
 
-            if self.final_upsample == "expand_first":
-                print("---final upsample expand_first---")
-                self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
-                                              dim_scale=4, dim=embed_dim)
-                self.out_conv = nn.Sequential(
-                    # Feature_aliasing(embed_dim),
-                    # Feature_aliasing(embed_dim)
-                    Feature_reduce(embed_dim, embed_dim // 2),
-                    Feature_aliasing(embed_dim // 2)
-                )
-                self.output = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=1,
+            self.out_conv_x1d = nn.Sequential(
+                # Feature_aliasing(embed_dim),
+                # Feature_aliasing(embed_dim)
+                Feature_reduce(embed_dim, embed_dim // 2),
+                Feature_aliasing(embed_dim // 2)
+            )
+
+            self.output = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=1,
+                                    bias=False)
+
+            self.output_x1a = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=1,
+                                        bias=False)
+
+            self.output_x1d = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=1,
                                         bias=False)
 
     # Encoder and Bottleneck
@@ -1042,11 +1065,39 @@ class SwinTransformerSys(nn.Module):
 
         return x
 
+    def up_x4_x1a(self, x):
+        H, W = self.patches_resolution
+        B, L, C = x.shape
+        assert L == H * W, "input features has wrong size"
+
+        if self.final_upsample == "expand_first":
+            x = self.up_x1a(x)
+            x = x.view(B, 4 * H, 4 * W, -1)
+            x = x.permute(0, 3, 1, 2)  # B,C,H,W
+            x = self.out_conv_x1a(x)  # for output not like block
+            x = self.output_x1a(x)
+
+        return x
+
+    def up_x4_x1d(self, x):
+        H, W = self.patches_resolution
+        B, L, C = x.shape
+        assert L == H * W, "input features has wrong size"
+
+        if self.final_upsample == "expand_first":
+            x = self.up_x1d(x)
+            x = x.view(B, 4 * H, 4 * W, -1)
+            x = x.permute(0, 3, 1, 2)  # B,C,H,W
+            x = self.out_conv_x1d(x)  # for output not like block
+            x = self.output_x1d(x)
+
+        return x
+
     def forward(self, x, batch_positions=None):
 
         # spatial encoder
         x, x1a, x1d, x_downsample, \
-            x1a_downsample, x1d_downsample = self.forward_features(x, batch_positions)
+        x1a_downsample, x1d_downsample = self.forward_features(x, batch_positions)
 
         # decoder
         x, x1a, x1d = self.forward_up_features(x, x1a, x1d, x_downsample, x1a_downsample, x1d_downsample)
@@ -1057,7 +1108,10 @@ class SwinTransformerSys(nn.Module):
         x = self.se(x)
         x = self.up_x4(x)
 
-        return x
+        x1a = self.up_x4_x1a(x1a)
+        x1d = self.up_x4_x1d(x1d)
+
+        return x, x1a, x1d
 
     def flops(self):
         flops = 0
