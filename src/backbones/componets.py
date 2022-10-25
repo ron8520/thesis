@@ -301,7 +301,7 @@ class MultiWindowAttention(nn.Module):
         # Sentinel-2 and Sentinel-1a cross attention (q, ka, va)
         q = q * self.scale
         attn_2a = torch.einsum("bhqd, bhkd -> bhqk", q, ka) / torch.maximum(
-            torch.norm(q, dim=-1, keepdim=True) * torch.norm(k, dim=-1, keepdim=True).transpose(-2, -1),
+            torch.norm(q, dim=-1, keepdim=True) * torch.norm(ka, dim=-1, keepdim=True).transpose(-2, -1),
             torch.tensor(1e-06, device=q.device, dtype=q.dtype))
         attn_2a = attn_2a / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
 
@@ -317,7 +317,7 @@ class MultiWindowAttention(nn.Module):
 
         # Sentinel-2 and Sentinel-1 cross attention (q, kd, vd)
         attn_2d = torch.einsum("bhqd, bhkd -> bhqk", q, kd) / torch.maximum(
-            torch.norm(q, dim=-1, keepdim=True) * torch.norm(k, dim=-1, keepdim=True).transpose(-2, -1),
+            torch.norm(q, dim=-1, keepdim=True) * torch.norm(kd, dim=-1, keepdim=True).transpose(-2, -1),
             torch.tensor(1e-06, device=q.device, dtype=q.dtype))
         attn_2d = attn_2d / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
 
