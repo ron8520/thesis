@@ -128,7 +128,7 @@ parser.add_argument(
     help="Do validation only after that many epochs.",
 )
 parser.add_argument(
-    "auxiliary_weight",
+    "--auxiliary_weight",
     default=0.5,
     type=float,
     help="Auxiliary learning loss weight"
