@@ -8,7 +8,9 @@ from src.backbones.ltae import LTAE2d
 from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
 from src.backbones.window import VSAWindowAttention
-from src.backbones.componets import Feature_aliasing, Feature_reduce
+from src.backbones.componets import Feature_aliasing, Feature_reduce, SepConv
+
+
 # from NATransformer.natten import NeighborhoodAttention
 
 class Mlp(nn.Module):
@@ -265,15 +267,12 @@ class SwinTransformerBlock(nn.Module):
           self.attn = VSAWindowAttention(
                 dim, out_dim=dim, num_heads=num_heads, window_size=self.window_size,
                 qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
-        # elif self.token == "NAT":
-        #   self.attn = NeighborhoodAttention(
-        #     dim, kernel_size=7, num_heads=num_heads,
-        #     qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
-        #   self.layer_scale = False
-        #   if layer_scale is not None and type(layer_scale) in [int, float]:
-        #     self.layer_scale = True
-        #     self.gamma1 = nn.Parameter(layer_scale * torch.ones(dim), requires_grad=True)
-        #     self.gamma2 = nn.Parameter(layer_scale * torch.ones(dim), requires_grad=True)
+        elif self.token == "SepConv":
+          self.attn = SepConv(
+              dim,
+              kernel_size=4 if self.input_resolution[0] == 4 else 7,
+              padding=1 if self.input_resolution[0] == 4 else 3
+          )
         elif self.token == "window":
           self.attn = WindowAttention(
               dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
@@ -399,15 +398,14 @@ class SwinTransformerBlock(nn.Module):
 
           return x
         
-        # elif self.token == "NAT":
-        #   if self.layer_scale:
-        #     x = x.view(B, H, W, C)
-        #     x = self.attn(x)
-        #     x = rearrange(x, 'b h w c -> b (h w) c')
-        #     x = self.norm1(x)
-        #     x = shortcut + self.drop_path(self.gamma1 * x)
-        #     x = x + self.drop_path(self.gamma2 * self.norm2(self.mlp(x)))
-        #     return x
+        elif self.token == "SepConv":
+            x = self.norm1(x)
+            x = x.view(B, H, W, C)
+            x = self.attn(x)
+            x = rearrange(x, 'b h w c -> b (h w) c')
+            x = shortcut + self.drop_path(x)
+            x = x + self.drop_path(self.mlp(self.norm2(x)))
+            return x
         
         # CNN after the attention
         # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
@@ -760,7 +758,7 @@ class SwinTransformerSys(nn.Module):
         self.num_features_up = int(embed_dim * 2)
         self.mlp_ratio = mlp_ratio
         self.final_upsample = final_upsample
-        self.tokens = ['VSA', 'VSA', 'VSA', 'VSA']
+        self.tokens = ['SepConv', 'SepConv', 'window', 'window']
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
