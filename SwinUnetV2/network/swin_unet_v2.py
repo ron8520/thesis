@@ -486,11 +486,11 @@ class BasicLayer(nn.Module):
             self.dim
         )
         self.aggregate = ConvLayer(
-            self.dim * 2,
-            self.dim,
+            nkernels=[self.dim * 2, self.dim],
             last_relu=False,
             k=1,
-            p=0
+            p=0,
+            bias=False
         )
 
         # patch merging layer
