@@ -5,7 +5,7 @@ from einops import rearrange, reduce
 from einops.layers.torch import Rearrange
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from src.backbones.ltae import LTAE2d
-from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
+from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock, DownConvBlock
 from src.backbones.SeLayer import SELayer
 from src.backbones.componets import Feature_aliasing, Feature_reduce, CBlock
 
@@ -480,19 +480,6 @@ class BasicLayer(nn.Module):
             for i in range(depth)])
 
 
-        self.conv_branch = CBlock(
-            self.dim,
-            self.dim * 2,
-            self.dim
-        )
-        self.aggregate = ConvLayer(
-            nkernels=[self.dim * 2, self.dim],
-            last_relu=False,
-            k=1,
-            p=0,
-            bias=False
-        )
-
         # patch merging layer
         if downsample is not None:
             self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
@@ -502,16 +489,7 @@ class BasicLayer(nn.Module):
     def forward(self, x):
         for index, blk in enumerate(self.blocks):
             if self.use_checkpoint:
-                conv_x = rearrange(x, 'b (h w) c -> b c h w',
-                                    h=self.input_resolution[0], w=self.input_resolution[1])
-                conv_out = self.conv_branch(conv_x)
-
                 x = checkpoint.checkpoint(blk, x)
-
-                x = rearrange(x, 'b (h w) c -> b c h w', h=self.input_resolution[0], w=self.input_resolution[1])
-                x = torch.concat([conv_out, x], dim=1)
-                x = self.aggregate(x)
-                x = rearrange(x, 'b c h w -> b (h w) c')
             else:
                 x = blk(x)
         if self.downsample is not None:
@@ -772,6 +750,20 @@ class SwinTransformerSys(nn.Module):
             norm="group",
             padding_mode="reflect",
         )
+        self.encoder_widths = [64, 96, 96, 192, 368, 768]
+        self.down_blocks = nn.ModuleList(
+            DownConvBlock(
+                d_in=self.encoder_widths[i],
+                d_out=self.encoder_widths[i + 1],
+                k=4,
+                s=2,
+                p=1,
+                pad_value=0,
+                norm="group",
+                padding_mode="reflect",
+            )
+            for i in range(self.num_layers)
+        )
         
         ## SE block
         self.se = nn.Sequential(
@@ -820,6 +812,9 @@ class SwinTransformerSys(nn.Module):
 
     # Encoder and Bottleneck
     def forward_features(self, x):
+        cnn_x = x
+        x = rearrange(x, 'b t c h w -> (b t) c h w')
+
         x = self.patch_embed(x)
         if self.ape:
             x = x + self.absolute_pos_embed
@@ -831,6 +826,18 @@ class SwinTransformerSys(nn.Module):
             x = layer(x)
 
         x = self.norm(x)  # B L C
+
+        feature_maps = []
+        # CNN SPATIAL ENCODER
+        for i in range(self.num_layers):
+            if i == 0:
+                out = self.down_blocks[i].smart_forward(cnn_x)
+            else:
+                out = self.down_blocks[i].smart_forward(feature_maps[-1])
+            feature_maps.append(out)
+
+        for i in feature_maps:
+            print(i.shape)
 
         return x, x_downsample
 
@@ -869,7 +876,6 @@ class SwinTransformerSys(nn.Module):
         
         B, T, C, H, W = x.shape
         x = self.in_conv.smart_forward(x)
-        x = rearrange(x, 'b t c h w -> (b t) c h w')
 
         #spatial encoder
         x, x_downsample = self.forward_features(x)
