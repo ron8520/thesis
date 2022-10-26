@@ -7,7 +7,8 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from src.backbones.ltae import LTAE2d
 from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
 from src.backbones.SeLayer import SELayer
-from src.backbones.componets import Feature_aliasing, Feature_reduce
+from src.backbones.componets import Feature_aliasing, Feature_reduce, CBlock
+
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -157,17 +158,6 @@ class WindowAttention(nn.Module):
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
-        # Swin v1
-        # q = q * self.scale
-        # attn = (q @ k.transpose(-2, -1))
-
-        # Swin v2, Scaled cosine attention
-        # q = q * self.scale
-        # qk = q @ k.transpose(-2, -1)
-        # q2 = torch.mul(q, q).sum(-1).sqrt().unsqueeze(3)
-        # k2 = torch.mul(k, k).sum(-1).sqrt().unsqueeze(3)
-        # attn = qk / torch.clip(q2 @ k2.transpose(-2, -1), min=1e-6)
-        # attn = attn / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
 
         # Swin v2, Scaled cosine attention
         q = q * self.scale
@@ -175,10 +165,6 @@ class WindowAttention(nn.Module):
             torch.norm(q, dim=-1, keepdim=True) * torch.norm(k, dim=-1, keepdim=True).transpose(-2, -1),
             torch.tensor(1e-06, device=q.device, dtype=q.dtype))
         attn = attn / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
-
-        # Swin v1
-        # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
-        #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
 
         # Swin v2
         relative_position_bias = self.get_continuous_relative_position_bias(N)
@@ -237,7 +223,7 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, cnn=False):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -285,40 +271,14 @@ class SwinTransformerBlock(nn.Module):
             attn_mask = None
 
         self.register_buffer("attn_mask", attn_mask)
-        # Use CNN for local feature, Borrow from ViTAE
-        self.cnn = cnn
-        # self.conv = nn.Sequential(
-        #                     Rearrange('b (h w) c -> b c h w', h=input_resolution[0], w=input_resolution[1]),
-        #                     nn.Conv2d(dim, mlp_hidden_dim, kernel_size=3, padding=1),
-        #                     nn.BatchNorm2d(mlp_hidden_dim),
-        #                     nn.ReLU(inplace=True),
-        #                     nn.Conv2d(mlp_hidden_dim, dim, kernel_size=3, padding=1),
-        #                     nn.BatchNorm2d(dim),
-        #                     nn.ReLU(inplace=True),
-        #                     nn.Conv2d(dim, dim, kernel_size=3, padding=1),
-        #                     Rearrange('b c h w-> b (h w) c'),
-        #                   ) if self.cnn else nn.Identity()
+
 
     def forward(self, x):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
-        
-        # CNN before the attention
-        # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
-        # x = self.conv(x)
-        # x = rearrange(x, 'b c h w -> b (h w) c', h=H, w=W)
-        
-        shortcut = x
 
-        # Another branch for CNN
-        # if self.shift_size == 0:
-        #     shortcut = rearrange(shortcut, 'b (h w) c -> b c h w', h=H, w=W)
-        #     shortcut = self.conv(shortcut)
-        #     shortcut = rearrange(shortcut, 'b c h w -> b (h w) c', h=H, w=W)
-        
-        # Swin v1
-        # x = self.norm1(x)
+        shortcut = x
 
         x = x.view(B, H, W, C)
 
@@ -352,18 +312,9 @@ class SwinTransformerBlock(nn.Module):
         # FFN
         x = shortcut + self.drop_path(x)
 
-        # Swin v1
-        # x = x + self.drop_path(self.mlp(self.norm2(x)))
-
         # Swin v2
         x = x + self.drop_path(self.norm2(self.mlp(x)))
-        
-        # CNN after the attention
-        # x = rearrange(x, 'b (h w) c -> b c h w', h=H, w=W)
-        # x = self.conv(x)
-        # x = rearrange(x, 'b c h w -> b (h w) c', h=H, w=W)
-        # before return feature map 
-        # self.conv(x)
+
         return x
 
     def extra_repr(self) -> str:
@@ -525,9 +476,22 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer,
-                                 cnn = True if i == (depth - 1) else False
                                  )
             for i in range(depth)])
+
+
+        self.conv_branch = CBlock(
+            self.dim,
+            self.dim * 2,
+            self.dim
+        )
+        self.aggregate = ConvLayer(
+            self.dim * 2,
+            self.dim,
+            last_relu=False,
+            k=1,
+            p=0
+        )
 
         # patch merging layer
         if downsample is not None:
@@ -535,10 +499,19 @@ class BasicLayer(nn.Module):
         else:
             self.downsample = None
 
-    def forward(self, x):
+    def forward(self, x, T=None):
         for index, blk in enumerate(self.blocks):
             if self.use_checkpoint:
+                conv_out = self.conv_branch((x, rearrange(x, '(b t) (h w) c -> b t c h w', t=T,
+                                                          h=self.input_resolution[0], w=self.input_resolution[1])))
+                conv_out = rearrange(conv_out, 'b t c h w -> (b t) c h w')
+
                 x = checkpoint.checkpoint(blk, x)
+
+                x = rearrange(x, 'b (h w) c -> b c h w', h=self.input_resolution[0], w=self.input_resolution[1])
+                x = torch.concat([conv_out, x], dim=1)
+                x = self.aggregate(x)
+                x = rearrange(x, 'b c h w -> b (h w) c')
             else:
                 x = blk(x)
         if self.downsample is not None:

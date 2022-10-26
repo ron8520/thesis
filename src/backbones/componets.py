@@ -1,5 +1,51 @@
 import torch.nn as nn
 
+from src.backbones.utae import TemporallySharedBlock, ConvLayer
+
+
+class CBlock(TemporallySharedBlock):
+    def __init__(
+            self,
+            in_feature,
+            hidden_features=None,
+            out_features=None,
+            norm_layer=nn.BatchNorm2d,
+            act_layer=nn.GELU
+    ):
+        super(CBlock, self).__init__()
+
+        self.conv1 = ConvLayer(
+            nkernels=[in_feature, hidden_features],
+            last_relu=False,
+            k=1,
+            p=0
+        )
+        self.dwconv = nn.Conv2d(
+            hidden_features,
+            hidden_features,
+            3,
+            1,
+            1,
+            bias=False,
+            groups=out_features
+        )
+
+        self.norm = norm_layer(out_features)
+        self.act = act_layer()
+        self.conv2 = ConvLayer(
+            hidden_features,
+            out_features,
+            last_relu=False,
+            k=1,
+            p=0
+        )
+    def forward(self, x):
+        shortcut = x
+        x = self.conv1(x)
+        x = self.dwconv(x)
+        x = self.norm(x)
+        x = self.act(x)
+        return x + shortcut
 
 class GroupNorm(nn.GroupNorm):
     """

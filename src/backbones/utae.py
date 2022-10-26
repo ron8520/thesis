@@ -220,6 +220,7 @@ class ConvLayer(nn.Module):
         p=1,
         n_groups=4,
         last_relu=True,
+        last_gelu=True,
         padding_mode="reflect",
     ):
         super(ConvLayer, self).__init__()
@@ -251,6 +252,8 @@ class ConvLayer(nn.Module):
 
             if last_relu:
                 layers.append(nn.ReLU())
+            elif last_gelu:
+                layers.append(nn.GELU())
             elif i < len(nkernels) - 2:
                 layers.append(nn.ReLU())
         self.conv = nn.Sequential(*layers)
