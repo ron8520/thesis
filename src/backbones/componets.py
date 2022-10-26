@@ -3,7 +3,7 @@ import torch.nn as nn
 from src.backbones.utae import TemporallySharedBlock, ConvLayer
 
 
-class CBlock(TemporallySharedBlock):
+class CBlock(nn.Module):
     def __init__(
             self,
             in_feature,
@@ -48,6 +48,7 @@ class CBlock(TemporallySharedBlock):
         x = self.act(x)
         x = self.conv2(x)
         return x + shortcut
+
 
 class GroupNorm(nn.GroupNorm):
     """
