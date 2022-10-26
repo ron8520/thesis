@@ -31,7 +31,7 @@ class CBlock(TemporallySharedBlock):
             groups=hidden_features
         )
 
-        self.norm = norm_layer(out_features)
+        self.norm = norm_layer(hidden_features)
         self.act = act_layer()
         self.conv2 = ConvLayer(
             nkernels=[hidden_features, out_features],
