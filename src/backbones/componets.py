@@ -18,7 +18,8 @@ class CBlock(TemporallySharedBlock):
             nkernels=[in_feature, hidden_features],
             last_relu=False,
             k=1,
-            p=0
+            p=0,
+            bias=False
         )
         self.dwconv = nn.Conv2d(
             hidden_features,
@@ -37,7 +38,8 @@ class CBlock(TemporallySharedBlock):
             out_features,
             last_relu=False,
             k=1,
-            p=0
+            p=0,
+            bias=False
         )
     def forward(self, x):
         shortcut = x
@@ -45,6 +47,7 @@ class CBlock(TemporallySharedBlock):
         x = self.dwconv(x)
         x = self.norm(x)
         x = self.act(x)
+        x = self.conv2(x)
         return x + shortcut
 
 class GroupNorm(nn.GroupNorm):

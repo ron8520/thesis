@@ -221,6 +221,7 @@ class ConvLayer(nn.Module):
         n_groups=4,
         last_relu=True,
         last_gelu=True,
+        bias=True,
         padding_mode="reflect",
     ):
         super(ConvLayer, self).__init__()
@@ -245,6 +246,7 @@ class ConvLayer(nn.Module):
                     padding=p,
                     stride=s,
                     padding_mode=padding_mode,
+                    bias=bias
                 )
             )
             if nl is not None:
