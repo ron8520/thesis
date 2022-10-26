@@ -502,7 +502,7 @@ class BasicLayer(nn.Module):
     def forward(self, x, T=None):
         for index, blk in enumerate(self.blocks):
             if self.use_checkpoint:
-                conv_out = self.conv_branch((x, rearrange(x, '(b t) (h w) c -> b t c h w', t=T,
+                conv_out = self.conv_branch.smart_forward((x, rearrange(x, '(b t) (h w) c -> b t c h w', t=T,
                                                           h=self.input_resolution[0], w=self.input_resolution[1])))
                 conv_out = rearrange(conv_out, 'b t c h w -> (b t) c h w')
 
