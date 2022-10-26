@@ -825,7 +825,7 @@ class SwinTransformerSys(nn.Module):
                                          norm_layer=norm_layer,
                                          upsample=PatchExpand if (i_layer < self.num_layers - 1) else None,
                                          use_checkpoint=use_checkpoint,
-                                         token=self.tokens[i_layer])
+                                         token=self.tokens[self.num_layers - 1 - i_layer])
             self.layers_up.append(layer_up)
             self.concat_back_dim.append(concat_linear)
 
@@ -839,7 +839,7 @@ class SwinTransformerSys(nn.Module):
             n_head=16,
             mlp=[256, 768],
             return_att=True,
-            d_k=4,
+            d_k=8,
         )
         self.temporal_aggregator = Temporal_Aggregator(mode="att_group")
         self.pad_value = 0
@@ -863,10 +863,10 @@ class SwinTransformerSys(nn.Module):
             self.up = FinalPatchExpand_X4(input_resolution=(img_size // patch_size, img_size // patch_size),
                                           dim_scale=4, dim=embed_dim)
             self.out_conv = nn.Sequential(
-              # Feature_aliasing(embed_dim),
-              # Feature_aliasing(embed_dim)
-              Feature_reduce(embed_dim, embed_dim // 2),
-              Feature_aliasing(embed_dim // 2)
+              Feature_aliasing(embed_dim),
+              Feature_aliasing(embed_dim)
+              # Feature_reduce(embed_dim, embed_dim // 2),
+              # Feature_aliasing(embed_dim // 2)
             )
             self.output = nn.Conv2d(in_channels=embed_dim // 2, out_channels=self.num_classes, kernel_size=1, bias=False)
 
