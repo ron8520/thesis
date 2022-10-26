@@ -764,6 +764,14 @@ class SwinTransformerSys(nn.Module):
             )
             for i in range(self.num_layers + 1)
         )
+        self.concat_front_dim = nn.ModuleList()
+        for i in range(self.num_layers):
+            self.concat = nn.Sequential(
+                nn.Conv2d(2 * embed_dim * 2 ** i, embed_dim * 2 ** i, kernel_size=1),
+                nn.BatchNorm2d(embed_dim * 2 ** i),
+                nn.GELU()
+            )
+            self.concat_front_dim.append(self.concat)
         
         ## SE block
         self.se = nn.Sequential(
@@ -836,9 +844,15 @@ class SwinTransformerSys(nn.Module):
                 out = self.down_blocks[i].smart_forward(feature_maps[-1])
             feature_maps.append(out)
 
-        for i in feature_maps:
-            print(i.shape)
-        print("")
+        # Concat feature map
+        for i, element in enumerate(x_downsample):
+            swin_feature = rearrange(element, 'b (h w) c -> b c h w',
+                                        h=self.features_sizes[i], w=self.features_sizes[i])
+            cnn_feature = rearrange(feature_maps[i + 1], 'b t c h w -> (b t) c h w')
+            concat_feature = torch.cat([swin_feature, cnn_feature], dim=1)
+            x_downsample[i] = self.concat_front_dim[i](concat_feature)
+            x_downsample[i] = rearrange('b c h w -> b (h w) c')
+
         return x, x_downsample
 
     # Dencoder and Skip connection
