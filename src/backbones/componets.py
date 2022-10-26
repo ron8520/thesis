@@ -13,7 +13,7 @@ class CBlock(TemporallySharedBlock):
             act_layer=nn.GELU
     ):
         super(CBlock, self).__init__()
-
+        self.pad_value = 0
         self.conv1 = ConvLayer(
             nkernels=[in_feature, hidden_features],
             last_relu=False,
@@ -61,7 +61,7 @@ class Feature_aliasing(nn.Module):
         super().__init__()
 
         self.conv = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
-        self.norm = GroupNorm(in_channels)
+        self.norm = nn.BatchNorm2d(in_channels)
         self.act = nn.GELU()
 
     def forward(self, x):

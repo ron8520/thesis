@@ -757,10 +757,8 @@ class SwinTransformerSys(nn.Module):
         self.temporal_encoder = LTAE2d(
             in_channels=768,
             d_model=256,
-            # d_model=1536,
             n_head=16,
             mlp=[256, 768],
-            # mlp=[1536, 768],
             return_att=True,
             d_k=8,
         )
@@ -819,16 +817,9 @@ class SwinTransformerSys(nn.Module):
             except AttributeError:
                 pass
 
-    # @torch.jit.ignore
-    # def no_weight_decay(self):
-    #     return {'absolute_pos_embed'}
-    #
-    # @torch.jit.ignore
-    # def no_weight_decay_keywords(self):
-    #     return {'relative_position_bias_table'}
 
     # Encoder and Bottleneck
-    def forward_features(self, x):
+    def forward_features(self, x, T=None):
         x = self.patch_embed(x)
         if self.ape:
             x = x + self.absolute_pos_embed
@@ -837,7 +828,7 @@ class SwinTransformerSys(nn.Module):
 
         for layer in self.layers:
             x_downsample.append(x)
-            x = layer(x)
+            x = layer(x, T=T)
 
         x = self.norm(x)  # B L C
 
@@ -881,7 +872,7 @@ class SwinTransformerSys(nn.Module):
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
         #spatial encoder
-        x, x_downsample = self.forward_features(x)
+        x, x_downsample = self.forward_features(x, T=T)
         
         x = rearrange(x, '(b t) (h w) c -> b t c h w', 
           b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
