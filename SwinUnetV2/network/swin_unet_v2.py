@@ -499,7 +499,7 @@ class BasicLayer(nn.Module):
         else:
             self.downsample = None
 
-    def forward(self, x, T=None):
+    def forward(self, x):
         for index, blk in enumerate(self.blocks):
             if self.use_checkpoint:
                 conv_x = rearrange(x, 'b (h w) c -> b c h w',
@@ -819,7 +819,7 @@ class SwinTransformerSys(nn.Module):
 
 
     # Encoder and Bottleneck
-    def forward_features(self, x, T=None):
+    def forward_features(self, x):
         x = self.patch_embed(x)
         if self.ape:
             x = x + self.absolute_pos_embed
@@ -828,7 +828,7 @@ class SwinTransformerSys(nn.Module):
 
         for layer in self.layers:
             x_downsample.append(x)
-            x = layer(x, T=T)
+            x = layer(x)
 
         x = self.norm(x)  # B L C
 
@@ -872,7 +872,7 @@ class SwinTransformerSys(nn.Module):
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
         #spatial encoder
-        x, x_downsample = self.forward_features(x, T=T)
+        x, x_downsample = self.forward_features(x)
         
         x = rearrange(x, '(b t) (h w) c -> b t c h w', 
           b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
