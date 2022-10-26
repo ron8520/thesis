@@ -762,7 +762,7 @@ class SwinTransformerSys(nn.Module):
                 norm="group",
                 padding_mode="reflect",
             )
-            for i in range(self.num_layers)
+            for i in range(self.num_layers + 1)
         )
         
         ## SE block
