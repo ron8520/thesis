@@ -829,7 +829,7 @@ class SwinTransformerSys(nn.Module):
 
         feature_maps = []
         # CNN SPATIAL ENCODER
-        for i in range(self.num_layers):
+        for i in range(self.num_layers + 1):
             if i == 0:
                 out = self.down_blocks[i].smart_forward(cnn_x)
             else:
@@ -838,7 +838,7 @@ class SwinTransformerSys(nn.Module):
 
         for i in feature_maps:
             print(i.shape)
-
+        print("")
         return x, x_downsample
 
     # Dencoder and Skip connection
