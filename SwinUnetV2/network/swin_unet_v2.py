@@ -849,6 +849,8 @@ class SwinTransformerSys(nn.Module):
             swin_feature = rearrange(element, 'b (h w) c -> b c h w',
                                         h=self.features_sizes[i], w=self.features_sizes[i])
             cnn_feature = rearrange(feature_maps[i + 1], 'b t c h w -> (b t) c h w')
+            print(f"swin: {swin_feature.shape}")
+            print(f"cnn: {cnn_feature.shape}")
             concat_feature = torch.cat([swin_feature, cnn_feature], dim=1)
             x_downsample[i] = self.concat_front_dim[i](concat_feature)
             x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')
