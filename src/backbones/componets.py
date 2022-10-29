@@ -172,7 +172,7 @@ class MultiSwinTransformerBlock(nn.Module):
         # Swin v2
         x = self.norm1(x)
         s1a = self.norm1(s1a)
-        s1d = self.norm(s1d)
+        s1d = self.norm1(s1d)
 
         x = x.view(B, H, W, C)
         s1a = s1a.view(Ba, H, W, Ca)
