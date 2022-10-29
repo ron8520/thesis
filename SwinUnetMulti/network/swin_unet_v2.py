@@ -6,7 +6,7 @@ from einops.layers.torch import Rearrange
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
 from src.backbones.ltae import LTAE2d
-from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock
+from src.backbones.utae import Temporal_Aggregator, ConvLayer, ConvBlock, DownConvBlock
 from src.backbones.SeLayer import SELayer
 from src.backbones.componets import Feature_aliasing, Feature_reduce, MultiSwinTransformerBlock
 
@@ -758,6 +758,33 @@ class SwinTransformerSys(nn.Module):
             return_att=True,
             d_k=768 // 16,
         )
+        self.encoder_widths = [96, 96, 96, 192, 384, 768]
+        self.down_blocks = nn.ModuleList(
+            DownConvBlock(
+                d_in=self.encoder_widths[i],
+                d_out=self.encoder_widths[i + 1],
+                k=4,
+                s=2,
+                p=1,
+                pad_value=0,
+                norm="group",
+                padding_mode="reflect",
+            )
+            for i in range(self.num_layers + 1)
+        )
+
+        self.concat_front_dim = nn.ModuleList()
+        nl = lambda num_feats: nn.GroupNorm(
+            num_channels=num_feats,
+            num_groups=4,
+        )
+        for i in range(self.num_layers):
+            self.concat = nn.Sequential(
+                nn.Conv2d(2 * embed_dim * 2 ** i, embed_dim * 2 ** i, kernel_size=1),
+                nl(embed_dim * 2 ** i),
+                nn.GELU()
+            )
+            self.concat_front_dim.append(self.concat)
 
         self.temporal_aggregator = Temporal_Aggregator(mode="att_group")
         self.pad_value = 0
@@ -809,6 +836,7 @@ class SwinTransformerSys(nn.Module):
         x = input['S2']
         x1a = input['S1A']
         x1d = input['S1D']
+        cnn_x = x
 
         pad_mask = (
             (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
@@ -855,6 +883,15 @@ class SwinTransformerSys(nn.Module):
 
         x = self.norm(x)  # B L C
 
+        feature_maps = []
+        # CNN SPATIAL ENCODER
+        for i in range(self.num_layers + 1):
+            if i == 0:
+                out = self.down_blocks[i].smart_forward(cnn_x)
+            else:
+                out = self.down_blocks[i].smart_forward(feature_maps[-1])
+            feature_maps.append(out)
+
         x = rearrange(x, '(b t) (h w) c -> b t c h w',
                       b=B, t=T, h=self.features_sizes[-1], w=self.features_sizes[-1])
 
@@ -868,9 +905,13 @@ class SwinTransformerSys(nn.Module):
 
         # Reshape back to 5 dims and do temporal aggreagation
         for i, elements in enumerate(x_downsample):
-            x_downsample[i] = rearrange(elements, '(b t) (h w) c -> b t c h w',
-                                        b=B, t=T, h=self.features_sizes[i], w=self.features_sizes[i])
-            x_downsample[i] = self.temporal_aggregator(x_downsample[i], pad_mask=pad_mask, attn_mask=att)
+            swin_feature = rearrange(elements, 'b (h w) c -> b c h w',
+                                        h=self.features_sizes[i], w=self.features_sizes[i])
+            cnn_feature = rearrange(feature_maps[i + 1], 'b t c h w -> (b t) c h w')
+            concat_feature = torch.cat([swin_feature, cnn_feature], dim=1)
+            concat_feature = self.concat_front_dim[i](concat_feature)
+            concat_feature = rearrange(concat_feature, "(b t) c h w -> b t c h w", b=B, t=T)
+            x_downsample[i] = self.temporal_aggregator(concat_feature, pad_mask=pad_mask, attn_mask=att)
             x_downsample[i] = rearrange(x_downsample[i], 'b c h w -> b (h w) c')
 
         return x, x_downsample
