@@ -836,7 +836,6 @@ class SwinTransformerSys(nn.Module):
         x = input['S2']
         x1a = input['S1A']
         x1d = input['S1D']
-        cnn_x = x
 
         pad_mask = (
             (x == self.pad_value).all(dim=-1).all(dim=-1).all(dim=-1)
@@ -852,6 +851,7 @@ class SwinTransformerSys(nn.Module):
 
         B, T, C, H, W = x.shape
         x = self.in_conv.smart_forward(x)
+        cnn_x = x
         x = rearrange(x, 'b t c h w -> (b t) c h w')
 
         Ba, Ta, Ca, Ha, Wa = x1a.shape
