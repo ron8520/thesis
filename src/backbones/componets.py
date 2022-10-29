@@ -324,7 +324,7 @@ class MultiWindowAttention(nn.Module):
         x_q = x_q[0]
 
         attn_x_q = torch.einsum("bhqd, bhkd -> bhqk", x_q, k) / torch.maximum(
-            torch.norm(x_q, dim=-1, keepdim=True) * torch.norm(k, dim=1, keepdim=True).transpose(-2, -1),
+            torch.norm(x_q, dim=-1, keepdim=True) * torch.norm(k, dim=-1, keepdim=True).transpose(-2, -1),
             torch.tensor(1e-06, device=x_q.device, dtype=x_q.dtype))
         attn_x_q = attn_x_q / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
 
