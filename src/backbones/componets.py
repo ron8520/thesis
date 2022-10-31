@@ -249,6 +249,8 @@ class MultiWindowAttention(nn.Module):
         self.qkv_d = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
+        self.proj2 = nn.Linear(dim, dim)
+
         self.proj_drop = nn.Dropout(proj_drop)
 
         self.softmax = nn.Softmax(dim=-1)
@@ -256,19 +258,7 @@ class MultiWindowAttention(nn.Module):
         self.tau = nn.Parameter(torch.ones((num_heads, window_size[0] * window_size[1],
                                             window_size[0] * window_size[1])))
 
-        self.tau_2d = nn.Parameter(torch.ones((num_heads, window_size[0] * window_size[1],
-                                            window_size[0] * window_size[1])))
-        self.conv = nn.Sequential(
-            nn.Conv2d(2 * dim, dim, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(dim),
-            nn.GELU(),
-            nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(dim),
-            nn.GELU(),
-            nn.Dropout(proj_drop),
-            SELayer(dim)
-        )
-        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
+        self.liner = nn.Linear(2*dim, dim)
 
     def get_continuous_relative_position_bias(self, N):
         # The continuous position bias approach adopts a small meta network on the relative coordinates
@@ -284,10 +274,6 @@ class MultiWindowAttention(nn.Module):
         B_, N, C = x.shape
         Ba_, Na, Ca = s1a.shape
         Bd_, Nd, Cd = s1d.shape
-
-        conv_branch = rearrange(x, "b (h w) c -> b c h w", h=int(math.sqrt(N)), w=int(math.sqrt(N)))
-        conv_out = self.dwconv(conv_branch)
-        conv_out = rearrange(conv_out, 'b (c h1) h w -> b (h w) h1 c', h1=self.num_heads, c=C//self.num_heads)
 
         # Sentinel-2
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -316,7 +302,7 @@ class MultiWindowAttention(nn.Module):
         attn_2a = self.softmax(attn_2a)
         attn_2a = self.attn_drop(attn_2a)
 
-        x_2a = (attn_2a @ (va + conv_out)).transpose(1, 2).reshape(B_, N, C)
+        x_2a = (attn_2a @ va).transpose(1, 2).reshape(B_, N, C)
 
         # Sentinel-2 and Sentinel-1 cross attention (q, kd, vd)
         attn_2d = torch.einsum("bhqd, bhkd -> bhqk", q, kd) / torch.maximum(
@@ -327,11 +313,14 @@ class MultiWindowAttention(nn.Module):
         attn_2d = attn_2d + relative_position_bias.unsqueeze(0)
         attn_2d = self.softmax(attn_2d)
         attn_2d = self.attn_drop(attn_2d)
-        x_2d = (attn_2d @ (vd + conv_out)).transpose(1, 2).reshape(B_, N, C)
+        x_2d = (attn_2d @ vd).transpose(1, 2).reshape(B_, N, C)
 
-        x = rearrange(torch.cat([x_2a, x_2d], dim=2), 'b (h w) c -> b c h w',
-                      h=int(math.sqrt(N)), w=int(math.sqrt(N)))
-        x = self.conv(x)
-        x = rearrange(x, 'b c h w -> b (h w) c')
+        x_2a = self.proj(x_2a)
+        x_2a = self.proj_drop(x_2a)
 
+        x_2d = self.proj2(x_2d)
+        x_2d = self.proj_drop(x_2d)
+
+        x = torch.cat([x_2a, x_2d], dim=2)
+        x = self.liner(x)
         return x
