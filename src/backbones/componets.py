@@ -308,7 +308,7 @@ class MultiWindowAttention(nn.Module):
         attn_2d = torch.einsum("bhqd, bhkd -> bhqk", q, kd) / torch.maximum(
             torch.norm(q, dim=-1, keepdim=True) * torch.norm(kd, dim=-1, keepdim=True).transpose(-2, -1),
             torch.tensor(1e-06, device=q.device, dtype=q.dtype))
-        attn_2d = attn_2d / torch.clip(self.tau_2d[:, :N, :N].unsqueeze(0), min=0.01)
+        attn_2d = attn_2d / torch.clip(self.tau[:, :N, :N].unsqueeze(0), min=0.01)
 
         attn_2d = attn_2d + relative_position_bias.unsqueeze(0)
         attn_2d = self.softmax(attn_2d)
