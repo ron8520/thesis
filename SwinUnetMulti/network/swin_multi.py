@@ -24,7 +24,7 @@ class Swin_multi(nn.Module):
             mlp_ratio=4.,
             qkv_bias=True,
             qk_scale=None,
-            drop_rate=0.0,
+            drop_rate=0.1,
             drop_path_rate=0.1,
             ape=False,
             patch_norm=True,
