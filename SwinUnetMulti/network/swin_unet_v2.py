@@ -699,19 +699,23 @@ class SwinTransformerSys(nn.Module):
         self.concat_dims = nn.ModuleList()
         for i_layer in range(self.num_layers):
             self.concat_dims.append(
-                MultiSwinTransformerBlock(
-                    dim=int(embed_dim * 2 ** i_layer),
-                    # if i_layer != (self.num_layers - 1) else int(embed_dim * 2 ** i_layer),
-                    num_heads=16,
-                    window_size=4,
-                    mlp_ratio=4.,
-                    qkv_bias=True,
-                    qk_scale=None,
-                    drop=0.1,
-                    attn_drop=attn_drop_rate,
-                    drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])][0],
-                    act_layer=nn.GELU,
-                    norm_layer=nn.LayerNorm
+                # MultiSwinTransformerBlock(
+                #     dim=int(embed_dim * 2 ** i_layer),
+                #     # if i_layer != (self.num_layers - 1) else int(embed_dim * 2 ** i_layer),
+                #     num_heads=16,
+                #     window_size=4,
+                #     mlp_ratio=4.,
+                #     qkv_bias=True,
+                #     qk_scale=None,
+                #     drop=0.1,
+                #     attn_drop=attn_drop_rate,
+                #     drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])][0],
+                #     act_layer=nn.GELU,
+                #     norm_layer=nn.LayerNorm
+                # )
+                nn.Sequential(
+                    nn.Linear(embed_dim * 3, embed_dim),
+                    nn.Dropout(0.1)
                 )
             )
 
@@ -846,12 +850,13 @@ class SwinTransformerSys(nn.Module):
         x_downsample = []
 
         for index, layer in enumerate(self.layers):
+            x = torch.concat([x, x1a, x1d], dim=2)
+            x = self.concat_dims[index](x)
             x_downsample.append(x)
             x = layer(x)
             x1a = self.layers_s1a[index](x1a)
             x1d = self.layers_s1d[index](x1d)
             ## concat other modelity
-            x = self.concat_dims[index](x, x1a, x1d)
 
         x = self.norm(x)  # B L C
 
