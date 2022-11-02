@@ -846,12 +846,12 @@ class SwinTransformerSys(nn.Module):
         x_downsample = []
 
         for index, layer in enumerate(self.layers):
-            x = self.concat_dims[index](x, x1a, x1d)
             x_downsample.append(x)
             x = layer(x)
             x1a = self.layers_s1a[index](x1a)
             x1d = self.layers_s1d[index](x1d)
             ## concat other modelity
+            x = self.concat_dims[index](x, x1a, x1d)
 
         x = self.norm(x)  # B L C
 
